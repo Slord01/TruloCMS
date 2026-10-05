@@ -1,0 +1,676 @@
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Aeonik";
+  src: url("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/webfonts/fa-solid-900.woff2")
+    format("woff2");
+  font-weight: normal;
+  font-style: normal;
+}
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+  /* Top bar yüksekliği (Polaris varsayılanı 3.5rem) – istersen 48px, 56px vb. yapabilirsin */
+  --pg-top-bar-height: 3.5rem;
+  --sellercentral-polaris-topbar-bg: #1d1b18;
+}
+#AppFrameTopBar {
+  --p-color-bg-inverse: var(--sellercentral-polaris-topbar-bg);
+}
+/* Top bar arama: odakta mavi çerçeve olmasın */
+#AppFrameTopBar input[type="search"]:focus,
+#AppFrameTopBar .Polaris-TopBar-SearchField input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+#AppFrameTopBar [data-polaris-top-bar-search-field] input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  height: 100%;
+  max-width: 100vw;
+  overflow: hidden;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-end-rgb));
+  letter-spacing: 0.01em;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* {
+  letter-spacing: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Zemin top bar ile aynı siyah; tek scroll: sadece içerik alanı kayar, sayfa (body) kaymaz */
+.Polaris-Frame {
+  background-color: var(--p-color-bg-inverse) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100vh !important;
+  min-height: 0 !important;
+}
+.Polaris-Frame > div:last-child {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+.Polaris-Frame div:has(> .trulo-scroll-wrapper) {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+.trulo-scroll-wrapper {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+body.trulo-collections-dropdown-open .trulo-scroll-wrapper,
+body.trulo-dropdown-open .trulo-scroll-wrapper {
+  overflow: visible !important;
+}
+#AppFrameNav {
+  position: fixed !important;
+  z-index: 60;
+  width: var(--pg-layout-width-nav-base) !important;
+  max-width: var(--pg-layout-width-nav-base) !important;
+  flex: 0 0 var(--pg-layout-width-nav-base) !important;
+  overflow: hidden;
+  box-sizing: border-box;
+  /* Shopify: sidebar sol üst köşe yuvarlak – wrapper’a uygula, kesin görünsün */
+  border-top-left-radius: 16px;
+  /* Yuvarlak köşede görünen alan top bar ile aynı renk */
+  background-color: var(--p-color-bg-inverse);
+}
+#AppFrameNav > nav,
+#AppFrameNav .Polaris-Navigation {
+  border-top-left-radius: 16px;
+  overflow: hidden;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+/* Dismiss butonu masaüstünde alan kaplamasın (Polaris zaten gizliyor, ek güvence) */
+#AppFrameNav .Polaris-Frame__NavigationDismiss {
+  display: none !important;
+}
+/* Nav wrapper flex'te yer kaplamasın; içerik sola kaymasın (ikinci sidebar olmaz) */
+.Polaris-Frame:has(#AppFrameNav) > div:has(#AppFrameNav) {
+  flex: 0 0 0 !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+}
+#AppFrameMain {
+  position: relative;
+  z-index: 50;
+  padding-left: var(--pg-layout-width-nav-base) !important;
+  padding-right: 0 !important;
+  max-width: none !important;
+  background-color: var(--p-color-bg-inverse) !important;
+}
+#AppFrameMain .Polaris-Frame__Content {
+  min-width: 0;
+}
+
+/* Shopify tarzı sayfa: top bar altından yukarı kayan; sadece sağ üst köşe yuvarlak (sol köşe sidebar'da) */
+@keyframes trulo-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* İçerik alanı: sidebar’a ve top bar’a az boşluk, sayfayı kaplasın */
+/* Nav: Sadece mevcut path seçili; Home (ilk öğe) başka sayfadayken vurgulu kalmasın */
+body[data-pathname]:not([data-pathname="/"]) #AppFrameNav .Polaris-Navigation__Section:first-child .Polaris-Navigation__Item:first-child .Polaris-Navigation__Link,
+body[data-pathname]:not([data-pathname="/"]) .Polaris-Frame .Polaris-Navigation .Polaris-Navigation__Section:first-child .Polaris-Navigation__Item:first-child .Polaris-Navigation__Link {
+  background: transparent !important;
+}
+body[data-pathname]:not([data-pathname="/"]) #AppFrameNav .Polaris-Navigation__Section:first-child .Polaris-Navigation__Item:first-child .Polaris-Navigation__Link:hover,
+body[data-pathname]:not([data-pathname="/"]) .Polaris-Frame .Polaris-Navigation .Polaris-Navigation__Section:first-child .Polaris-Navigation__Item:first-child .Polaris-Navigation__Link:hover {
+  background: var(--p-color-bg-surface-hover, rgba(0, 0, 0, 0.05)) !important;
+}
+
+.trulo-page-content-transition {
+  animation: trulo-slide-up 0.25s ease-out;
+}
+
+.trulo-page-content {
+  min-height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--p-color-bg-surface-secondary, #f6f6f7);
+  border-top-right-radius: 16px;
+  overflow: visible;
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.08);
+  padding-top: 2px;
+  padding-left: 12px;
+  padding-right: 12px;
+  padding-bottom: 12px;
+}
+@media (min-width: 48em) {
+  .trulo-page-content {
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 16px;
+  }
+}
+/* Sayfa içeriği ortalanmasın, sola hizalı ve tam genişlik */
+.trulo-page-content .Polaris-Page {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.trulo-page-content .Polaris-Page__Content {
+  padding: 8px 0 0;
+}
+@media (min-width: 48em) {
+  .trulo-page-content .Polaris-Page__Content {
+    padding-top: 8px;
+  }
+}
+
+/* Einstellungen: kompaktere Page-Überschrift, weniger Abstand unter der Top Bar */
+body[data-pathname*="/settings"] .trulo-page-content .Polaris-Page__Content {
+  padding-block-start: var(--p-space-100, 4px);
+}
+@media (min-width: 48em) {
+  body[data-pathname*="/settings"] .trulo-page-content .Polaris-Page__Content {
+    padding-block-start: var(--p-space-100, 4px);
+  }
+}
+body[data-pathname*="/settings"] .trulo-page-content .Polaris-Page-Header__TitleWrapper {
+  margin-top: 0;
+}
+body[data-pathname*="/settings"] .trulo-page-content .Polaris-Page-Header__TitleWrapper .Polaris-Header-Title,
+body[data-pathname*="/settings"] .trulo-page-content .Polaris-Page-Header__TitleWrapper .Polaris-Text--headingLg {
+  font-size: var(--p-font-size-450, 18px);
+  line-height: var(--p-font-line-height-600, 24px);
+  font-weight: var(--p-font-weight-semibold, 600);
+}
+
+/* Settings sol menüde en alta sabit */
+.Polaris-Navigation__PrimaryNavigation {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.Polaris-Navigation__Section--fill {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+/* Top bar arama dropdown (styled-components yok, className) */
+.trulo-search-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+}
+.trulo-search-input {
+  width: 100%;
+  padding: 6px 12px;
+  border: 1px solid #4d4d52;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #fff;
+  /* Top bar (#1a1a1a) üzerinde hafif yükselmiş yüzey — düz siyah değil */
+  background: linear-gradient(180deg, #36363a 0%, #2c2c2f 100%);
+  /* Kabartma: üstte ince highlight, altta inset gölge + hafif dış derinlik */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.12);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.trulo-search-input:focus {
+  outline: none !important;
+  border-color: #75757d;
+  background: linear-gradient(180deg, #3e3e43 0%, #343438 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 2px 8px rgba(0, 0, 0, 0.5),
+    0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.trulo-search-input::placeholder {
+  color: #a0a0a0;
+}
+/* Tarayıcının yerleşik arama «temizle» (×) düğmesi koyu zeminde görünmezdi — beyaz çarpı */
+.trulo-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  margin-inline-start: 4px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' d='M3 3l8 8M11 3l-8 8'/%3E%3C/svg%3E")
+    center/14px 14px no-repeat;
+}
+.trulo-search-input::-ms-clear {
+  filter: invert(1);
+}
+.trulo-search-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+.trulo-search-category {
+  padding: 8px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+.trulo-search-category-count {
+  margin-left: 6px;
+  font-weight: 700;
+  color: #374151;
+}
+.trulo-search-hit {
+  display: block;
+  padding: 10px 16px;
+  color: #374151;
+  text-decoration: none;
+  font-size: 14px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.trulo-search-hit:hover {
+  background-color: #f3f4f6;
+  color: #0ea5e9;
+}
+.trulo-search-hit:last-child {
+  border-bottom: none;
+}
+.trulo-search-empty {
+  padding: 24px 16px;
+  color: #6b7280;
+  font-size: 14px;
+  text-align: center;
+}
+
+/* ══════════════════════════════════════════════════════
+   SELLER CENTRAL — MOBILE RESPONSIVENESS
+   ══════════════════════════════════════════════════════ */
+
+/* ── Polaris mobile nav ── */
+/* Polaris Frame handles the hamburger + drawer natively.
+   These overrides improve the experience for our custom layout. */
+
+@media (max-width: 767px) {
+  /* Reset our custom desktop-only sidebar positioning so Polaris can
+     manage the navigation drawer natively on mobile. */
+  #AppFrameNav {
+    position: static !important;
+    width: auto !important;
+    max-width: none !important;
+    flex: none !important;
+    overflow: visible !important;
+    border-top-left-radius: 0 !important;
+    /* Safety net: whatever ends up on top of the drawer when it's open, this must win.
+       Polaris's own .Polaris-Frame__Navigation is already position:fixed with a high
+       z-index token, but our custom overrides on this wrapper (and other fixed/positioned
+       elements elsewhere on the page) can otherwise end up stacked above it. */
+    z-index: 2147483000 !important;
+  }
+  #AppFrameNav .Polaris-Frame__Navigation {
+    z-index: 2147483000 !important;
+  }
+  #AppFrameMain {
+    padding-left: 0 !important;
+  }
+  .Polaris-Frame:has(#AppFrameNav) > div:has(#AppFrameNav) {
+    flex: none !important;
+    width: auto !important;
+    min-width: auto !important;
+  }
+
+  /* Content area: no rounded corners on mobile (full bleed feel) */
+  .trulo-page-content {
+    border-radius: 0 !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  /* Full-width content */
+  .Polaris-Frame__Content {
+    padding: 0 !important;
+  }
+}
+
+/* ── Tables: horizontal scroll on mobile ── */
+@media (max-width: 767px) {
+  /* Polaris DataTable: enable horizontal scroll */
+  .Polaris-DataTable__ScrollContainer,
+  .Polaris-DataTable {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Polaris IndexTable: horizontal scroll */
+  .Polaris-IndexTable,
+  .Polaris-IndexTable__ScrollContainer {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Prevent table cells from shrinking too much */
+  .Polaris-DataTable__Cell,
+  .Polaris-IndexTable__TableCell {
+    white-space: nowrap;
+    min-width: 80px;
+  }
+
+  /* Table first cell (checkbox/title): don't shrink */
+  .Polaris-IndexTable__TableCell:first-child,
+  .Polaris-DataTable__Cell--firstColumn {
+    min-width: 140px;
+  }
+}
+
+/* ── Forms: full width on mobile ── */
+@media (max-width: 767px) {
+  /* Polaris form fields: full width */
+  .Polaris-FormLayout {
+    gap: 12px !important;
+  }
+  .Polaris-FormLayout__Item {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+  .Polaris-FormLayout__Items {
+    flex-direction: column !important;
+  }
+
+  /* Polaris page actions: stack on mobile */
+  .Polaris-PageActions {
+    flex-direction: column-reverse !important;
+    gap: 8px !important;
+  }
+  .Polaris-PageActions .Polaris-ButtonGroup {
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+  .Polaris-PageActions button {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Page header: stack title + actions */
+  .Polaris-Page-Header__RightAlign {
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+  }
+}
+
+/* ── Cards / sections ── */
+@media (max-width: 767px) {
+  /* Tighter card padding */
+  .Polaris-Card__Section,
+  .Polaris-LegacyCard__Section {
+    padding: 12px !important;
+  }
+
+  /* Stack layout columns */
+  .Polaris-Layout__Section {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+
+  /* Polaris Inline: wrap on mobile */
+  .Polaris-InlineStack {
+    flex-wrap: wrap !important;
+  }
+
+  /* Polaris Grid: 1 column on mobile */
+  .Polaris-Grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Top bar search: simpler on mobile ── */
+@media (max-width: 480px) {
+  .trulo-search-wrap {
+    max-width: 100% !important;
+  }
+  .Polaris-TopBar__Contents {
+    gap: 8px !important;
+  }
+}
+
+/* ── Touch targets ── */
+@media (max-width: 767px) {
+  /* Ensure all interactive elements are at least 44px tall */
+  .Polaris-Button,
+  .Polaris-Navigation__Link,
+  .Polaris-TopBar-Menu__Activator,
+  .Polaris-IndexTable__TableRow td button {
+    min-height: 44px !important;
+  }
+
+  /* Checkbox: bigger hit area */
+  .Polaris-Checkbox__Input {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  /* Remove hover states that don't work on touch */
+  @media (hover: none) {
+    .Polaris-Navigation__Item:hover .Polaris-Navigation__Link {
+      background: transparent !important;
+    }
+  }
+}
+
+/* ── Specific page improvements ── */
+@media (max-width: 767px) {
+  /* Order detail: full width sections */
+  .Polaris-Layout {
+    flex-direction: column !important;
+  }
+  .Polaris-Layout__Section--secondary {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Image upload area: full width */
+  .Polaris-DropZone {
+    min-height: 120px !important;
+  }
+
+  /* Stats/metric cards: 2 column grid */
+  .Polaris-Layout__Section--oneThird {
+    flex: 1 1 calc(50% - 8px) !important;
+    max-width: calc(50% - 8px) !important;
+  }
+}
+
+
+/* ═══ "Warmer Marktplatz" design (visual only — colours, fonts, radii; no layout/function changes) ═══ */
+:root {
+  --trulo-ground: #f6f2ec;
+  --trulo-ink: #1d1b18;
+  --trulo-line: #e6dfd4;
+  --trulo-brand: #ee8a12;
+  --trulo-brand-text: #a65300;
+  --trulo-brand-soft: #fcebd5;
+}
+body,
+.Polaris-Frame {
+  --p-font-family-sans: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --p-color-bg: #ffffff;
+  --p-color-bg-surface-secondary: #faf7f2;
+  --p-color-bg-surface-hover: #faf6ef;
+  --p-color-border: var(--trulo-line);
+  --p-color-border-secondary: #efe8dd;
+  --p-color-text-link: var(--trulo-brand-text);
+  --p-color-text-link-hover: #7f3f00;
+  --p-color-border-focus: var(--trulo-brand);
+  --p-color-bg-fill-brand: var(--trulo-ink);
+  --p-color-bg-fill-brand-hover: #34302b;
+  --p-color-bg-fill-brand-active: #000;
+  --p-border-radius-300: 16px;
+  --p-border-radius-400: 20px;
+  /* Emphasis + info tones (were Polaris blue) in the warm palette */
+  --p-color-text-emphasis: var(--trulo-brand-text);
+  --p-color-text-emphasis-hover: #7f3f00;
+  --p-color-text-emphasis-active: #6a3400;
+  --p-color-icon-emphasis: var(--trulo-brand-text);
+  --p-color-border-emphasis: var(--trulo-brand);
+  --p-color-bg-fill-emphasis: var(--trulo-ink);
+  --p-color-bg-fill-emphasis-hover: #34302b;
+  --p-color-bg-fill-emphasis-active: #000;
+  --p-color-bg-surface-emphasis: var(--trulo-brand-soft);
+  --p-color-bg-surface-info: #fdf3e6;
+  --p-color-bg-surface-info-hover: #fcebd5;
+  --p-color-bg-surface-info-active: #f5d3a8;
+  --p-color-bg-fill-info: #f5d3a8;
+  --p-color-bg-fill-info-secondary: #fcebd5;
+  --p-color-text-info: #7f3f00;
+  --p-color-text-info-hover: #6a3400;
+  --p-color-text-info-on-bg-fill: #6a3400;
+  --p-color-icon-info: var(--trulo-brand-text);
+  --p-color-border-info: #f5d3a8;
+  font-family: var(--p-font-family-sans);
+}
+html body { font-family: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; }
+
+/* Page area on the warm ground */
+.trulo-page-content { background: #ffffff; }
+
+/* Headings in the display face */
+.Polaris-Text--headingXl, .Polaris-Text--heading2xl, .Polaris-Text--heading3xl,
+.Polaris-Text--headingLg, .Polaris-Header-Title,
+.trulo-page-content h1, .trulo-page-content h2 {
+  font-family: "Bricolage Grotesque", Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+/* Sidebar: dark, light text, orange active item (design: Sellercentral · Übersicht) */
+#AppFrameNav,
+#AppFrameNav .Polaris-Navigation {
+  background-color: var(--trulo-ink) !important;
+  --p-color-border: rgba(255, 255, 255, 0.1);
+  --p-color-border-secondary: rgba(255, 255, 255, 0.1);
+  /* Polaris paints the whole nav with --p-color-nav-bg on :hover — keep it the same dark bar. */
+  --p-color-nav-bg: var(--trulo-ink);
+  --p-color-nav-bg-surface: transparent;
+  --p-color-nav-bg-surface-hover: rgba(255, 255, 255, 0.08);
+  --p-color-nav-bg-surface-active: rgba(255, 255, 255, 0.12);
+  --p-color-nav-bg-surface-selected: var(--trulo-brand);
+  --p-color-text: #ffffff;
+  --p-color-text-secondary: rgba(255, 255, 255, 0.72);
+  --p-color-icon: #ffffff;
+  --p-color-icon-secondary: rgba(255, 255, 255, 0.72);
+}
+#AppFrameNav .Polaris-Navigation__PrimaryNavigation,
+#AppFrameNav .Polaris-Navigation__PrimaryNavigation:hover {
+  background-color: var(--trulo-ink) !important;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+#AppFrameNav .Polaris-Navigation__Section--withSeparator,
+#AppFrameNav hr { border-color: rgba(255, 255, 255, 0.1) !important; }
+#AppFrameNav .Polaris-Navigation__Item,
+#AppFrameNav .Polaris-Navigation__Text,
+#AppFrameNav .Polaris-Navigation__SectionHeading,
+#AppFrameNav .Polaris-Navigation__SectionHeading .Polaris-Text--root {
+  color: #ffffff !important;
+}
+#AppFrameNav .Polaris-Navigation__Icon svg,
+#AppFrameNav .Polaris-Icon svg { fill: #ffffff !important; }
+#AppFrameNav .Polaris-Navigation__ItemInnerWrapper { border-radius: 12px; background: transparent !important; }
+#AppFrameNav .Polaris-Navigation__ItemInnerWrapper:hover { background: rgba(255, 255, 255, 0.08) !important; }
+#AppFrameNav .Polaris-Navigation__ItemInnerWrapper--selected,
+#AppFrameNav .Polaris-Navigation__ItemInnerWrapper--selected:hover { background: var(--trulo-brand) !important; }
+#AppFrameNav .Polaris-Navigation__ItemInnerWrapper--selected .Polaris-Navigation__Item,
+#AppFrameNav .Polaris-Navigation__ItemInnerWrapper--selected .Polaris-Navigation__Text {
+  color: var(--trulo-ink) !important;
+  font-weight: 700;
+}
+#AppFrameNav .Polaris-Navigation__ItemInnerWrapper--selected .Polaris-Icon svg { fill: var(--trulo-ink) !important; }
+/* Sub-items (expanded section): subtle orange tint instead of the full orange pill */
+#AppFrameNav .Polaris-Navigation__SecondaryNavigation .Polaris-Navigation__ItemInnerWrapper--selected {
+  background: rgba(238, 138, 18, 0.18) !important;
+}
+#AppFrameNav .Polaris-Navigation__SecondaryNavigation .Polaris-Navigation__ItemInnerWrapper--selected .Polaris-Navigation__Item,
+#AppFrameNav .Polaris-Navigation__SecondaryNavigation .Polaris-Navigation__ItemInnerWrapper--selected .Polaris-Navigation__Text {
+  color: #fcebd5 !important;
+}
+#AppFrameNav .Polaris-Navigation__Text .Polaris-Text--root { color: inherit !important; }
+#AppFrameNav .Polaris-Navigation__Text .Polaris-Text--subdued { color: rgba(255, 255, 255, 0.72) !important; }
+#AppFrameNav .Polaris-Navigation__Item:focus-visible { outline: 2px solid var(--trulo-brand); }
+#AppFrameNav .Polaris-Badge { background: rgba(255, 255, 255, 0.14); color: #ffffff; }
+
+/* Cards: white, rounder, warm hairline */
+.trulo-page-content .Polaris-ShadowBevel {
+  --pc-shadow-bevel-border-radius: 20px !important;
+  --pc-shadow-bevel-box-shadow: 0 0 0 1px rgba(29, 27, 24, 0.1) !important;
+}
+.trulo-page-content .Polaris-LegacyCard { border-radius: 20px; box-shadow: 0 0 0 1px rgba(29, 27, 24, 0.1); }
+
+/* Buttons: primary = dark pill, secondary = white pill with warm border */
+.Polaris-Button { border-radius: 999px !important; }
+.Polaris-Button--variantPrimary {
+  --pc-button-bg: var(--trulo-ink) !important;
+  --pc-button-bg-hover: #34302b !important;
+  --pc-button-bg-active: #000 !important;
+  --pc-button-box-shadow: none !important;
+  --pc-button-box-shadow-active: none !important;
+  background: var(--trulo-ink) !important;
+}
+.Polaris-Button--variantPrimary::before, .Polaris-Button--variantPrimary::after { box-shadow: none !important; }
+.Polaris-Button--variantSecondary { --pc-button-box-shadow: 0 0 0 1px var(--trulo-line) inset !important; }
+
+/* Form fields: warm border, orange focus ring */
+.Polaris-TextField__Backdrop { border-color: var(--trulo-line) !important; border-radius: 12px !important; }
+.Polaris-TextField--focus > .Polaris-TextField__Backdrop::after,
+.Polaris-Select__Input:focus ~ .Polaris-Select__Backdrop::after { box-shadow: 0 0 0 2px var(--trulo-brand) !important; }
+
+/* Tabs / selection accents */
+.Polaris-Tabs__Tab--active, .Polaris-Tabs__Tab[aria-selected="true"] { --pc-tab-bg: var(--trulo-brand-soft); }
+.Polaris-Checkbox__Backdrop.Polaris-Checkbox--checked, .Polaris-RadioButton__Input:checked + .Polaris-RadioButton__Backdrop {
+  --p-color-bg-fill-brand: var(--trulo-ink);
+}

@@ -1,0 +1,1137 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import {
+  Page,
+  Card,
+  Button,
+  TextField,
+  Select,
+  Text,
+  BlockStack,
+  InlineStack,
+  Banner,
+  Box,
+  Modal,
+  Badge,
+  Divider,
+} from "@shopify/polaris";
+import { getMedusaAdminClient } from "@/lib/medusa-admin-client";
+import { titleToHandle } from "@/lib/slugify";
+import MediaPickerModal from "@/components/MediaPickerModal";
+import { confirmDelete } from "@/lib/confirm-delete";
+import { useLocale } from "next-intl";
+import { useSearchParams } from "next/navigation";
+import { getBrandPageCopy, getBrandAuthorizationsPageCopy } from "@/lib/brand-page-i18n";
+import { userError } from "@/lib/api-error-messages";
+import { appendMediaFileToFormData } from "@/lib/media-upload";
+
+const getDefaultBaseUrl = () =>
+  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "").replace(/\/$/, "") ||
+  (typeof window !== "undefined" ? "http://localhost:9000" : "");
+
+const EMPTY_FORM = {
+  name: "", handle: "", logo_image: "", banner_image: "", address: "",
+  brand_type: "own", trademark_number: "", trademark_jurisdiction: "",
+};
+
+const EMPTY_VERIFY = {
+  brand_type: "own_registered",
+  trademark_number: "",
+  trademark_jurisdiction: "EUIPO",
+  trademark_status: "registered",
+  trademark_owner_name: "",
+  ownership_role: "owner",
+  website: "",
+};
+
+const BRANDS_PAGE_SIZE = 100; // 4 per row x 25 rows
+
+// Brand status/verification badge (docs/BRAND.md)
+function BrandStatusBadge({ brand, copy }) {
+  if (brand.status === "pending" || brand.verification_level === "pending_review") {
+    return <Badge tone="attention">{copy.statusPending}</Badge>;
+  }
+  if (brand.status === "rejected") return <Badge tone="critical">{copy.statusRejected}</Badge>;
+  if (brand.status === "superseded") return <Badge tone="critical">{copy.statusSuperseded}</Badge>;
+  if (brand.verification_level === "verified") return <Badge tone="success">{copy.statusVerified}</Badge>;
+  if (brand.verification_level === "reseller") return <Badge tone="success">{copy.statusReseller}</Badge>;
+  if (brand.verification_level === "unverified") return <Badge>{copy.statusUnverified}</Badge>;
+  return null;
+}
+
+function canVerifyBrand(brand, { isSuperuser, callerId }) {
+  if (!brand) return false;
+  if (brand.verification_level === "verified" || brand.verification_level === "reseller") return false;
+  if (brand.status === "pending" || brand.verification_level === "pending_review") return false;
+  if (isSuperuser) return true;
+  return !!(callerId && brand.seller_id && brand.seller_id === callerId);
+}
+
+function authDocLabel(type, authCopy) {
+  const map = {
+    trademark_certificate: authCopy.docTrademarkCert,
+    trademark_image: authCopy.docTrademarkImage,
+    product_packaging: authCopy.docPackaging,
+    authorization_letter: authCopy.docAuthLetter,
+    distribution_agreement: authCopy.docDistribution,
+    purchase_invoice: authCopy.docInvoice,
+  };
+  return map[type] || type;
+}
+
+// ── Brand card (grid tile) ─────────────────────────────────────────────────
+function isPendingReview(brand) {
+  return brand?.status === "pending" || brand?.verification_level === "pending_review";
+}
+
+function BrandCard({ brand, baseUrl, onEdit, canEdit, canVerify, onVerify, canReview, onReview, isSuperuser, isMine, copy }) {
+  const resolveUrl = (url) => {
+    if (!url) return "";
+    if (url.startsWith("http") || url.startsWith("data:")) return url;
+    return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+  };
+  const logoSrc = brand.logo_image ? resolveUrl(brand.logo_image) : null;
+  const bannerSrc = brand.banner_image ? resolveUrl(brand.banner_image) : null;
+
+  return (
+    <div style={{ position: "relative" }}>
+      {isPendingReview(brand) && (
+        <span
+          title={copy.statusPending}
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            zIndex: 2,
+            minWidth: 18,
+            height: 18,
+            padding: "0 5px",
+            borderRadius: 999,
+            background: "#dc2626",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 800,
+            lineHeight: "18px",
+            textAlign: "center",
+            boxShadow: "0 0 0 2px #fff",
+          }}
+        >!</span>
+      )}
+    <Card padding="300">
+      <BlockStack gap="200">
+        {bannerSrc && (
+          <div style={{ borderRadius: 6, overflow: "hidden", height: 56 }}>
+            <img src={bannerSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </div>
+        )}
+        <InlineStack gap="200" blockAlign="center" wrap={false}>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", overflow: "hidden", background: "var(--p-color-bg-fill-secondary)", border: "1px solid #e6dfd4", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {logoSrc ? (
+              <img src={logoSrc} alt={brand.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <Text as="span" variant="bodyMd" tone="subdued">—</Text>
+            )}
+          </div>
+          <BlockStack gap="050">
+            <Text as="p" variant="bodyMd" fontWeight="semibold" truncate>{brand.name}</Text>
+            {brand.handle && <Text as="p" variant="bodySm" tone="subdued" truncate>{brand.handle}</Text>}
+          </BlockStack>
+        </InlineStack>
+
+        <InlineStack gap="150" wrap>
+          <BrandStatusBadge brand={brand} copy={copy} />
+          {isMine && <Badge tone="info">{copy.myBrands}</Badge>}
+        </InlineStack>
+
+        {canVerify && (
+          <Button size="slim" variant="primary" fullWidth onClick={() => onVerify(brand)}>
+            {copy.verify}
+          </Button>
+        )}
+        {canEdit && (
+          <Button size="slim" variant="secondary" fullWidth onClick={() => onEdit(brand)}>
+            {isSuperuser ? copy.edit : copy.logoBanner}
+          </Button>
+        )}
+        {canReview && (
+          <Button size="slim" tone="critical" fullWidth onClick={() => onReview(brand)}>
+            {copy.review}
+          </Button>
+        )}
+      </BlockStack>
+    </Card>
+    </div>
+  );
+}
+
+function ReviewField({ label, children }) {
+  if (children == null || children === "" || children === false) return null;
+  return (
+    <div style={{ padding: "10px 0", borderBottom: "1px solid #e6dfd4" }}>
+      <Text as="p" variant="bodySm" tone="subdued">{label}</Text>
+      <div style={{ marginTop: 4 }}>{typeof children === "string" ? <Text as="p" variant="bodyMd">{children}</Text> : children}</div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+export default function BrandPage() {
+  const client = getMedusaAdminClient();
+  const locale = useLocale();
+  const searchParams = useSearchParams();
+  const reviewId = searchParams.get("review");
+  const baseUrl = (client.baseURL || getDefaultBaseUrl()).replace(/\/$/, "");
+
+  // Read caller identity from localStorage
+  const [callerId, setCallerId] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("sellerId") || null : null
+  );
+  const [isSuperuser, setIsSuperuser] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("sellerIsSuperuser") === "true" : false
+  );
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCallerId(localStorage.getItem("sellerId") || null);
+      setIsSuperuser(localStorage.getItem("sellerIsSuperuser") === "true");
+    }
+  }, []);
+
+  const [brands, setBrands] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingBrand, setEditingBrand] = useState(null); // full brand object (null = create)
+  const [saving, setSaving] = useState(false);
+  const [logoPickerOpen, setLogoPickerOpen] = useState(false);
+  const [bannerPickerOpen, setBannerPickerOpen] = useState(false);
+  const [formData, setFormData] = useState(EMPTY_FORM);
+  const [message, setMessage] = useState({ type: "", text: "" });
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [authFile, setAuthFile] = useState(null); // { url, name } once uploaded
+  const [authFileUploading, setAuthFileUploading] = useState(false);
+  const [reuploading, setReuploading] = useState(false);
+  const [page, setPage] = useState(1);
+  const copy = getBrandPageCopy(locale, isSuperuser);
+  const authCopy = getBrandAuthorizationsPageCopy(locale);
+
+  // ── Pending authorizations (superuser review queue — merged in from the old
+  // standalone /content/brands/authorizations page) ───────────────────────
+  const [pendingBrands, setPendingBrands] = useState([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
+  const [authBusyId, setAuthBusyId] = useState(null);
+  const [reviewTarget, setReviewTarget] = useState(null);
+  const [rejectTarget, setRejectTarget] = useState(null); // brand or null
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+  const [verifyTarget, setVerifyTarget] = useState(null);
+  const [verifyForm, setVerifyForm] = useState(EMPTY_VERIFY);
+  const [verifySaving, setVerifySaving] = useState(false);
+  const [verifyCert, setVerifyCert] = useState(null);
+  const [verifyPack, setVerifyPack] = useState(null);
+  const [verifyExtra, setVerifyExtra] = useState(null);
+  const [verifyInvoice, setVerifyInvoice] = useState(null);
+  const [verifyUploading, setVerifyUploading] = useState("");
+
+  const loadPending = () => {
+    if (!isSuperuser) { setPendingLoading(false); return; }
+    setPendingLoading(true);
+    client.getPendingBrandAuthorizations()
+      .then((r) => setPendingBrands(r.brands || []))
+      .catch(() => setPendingBrands([]))
+      .finally(() => setPendingLoading(false));
+  };
+
+  useEffect(() => { loadPending(); }, [isSuperuser]);
+
+  useEffect(() => {
+    if (!isSuperuser || pendingLoading || !reviewId) return;
+    const brand = pendingBrands.find((b) => b.id === reviewId);
+    if (brand) setReviewTarget(brand);
+  }, [isSuperuser, pendingLoading, pendingBrands, reviewId]);
+
+  const handleApprove = async (brand) => {
+    setAuthBusyId(brand.id);
+    setMessage({ type: "", text: "" });
+    try {
+      await client.approveBrandAuthorization(brand.id);
+      setMessage({ type: "success", text: authCopy.approved });
+      setReviewTarget(null);
+      loadPending();
+      loadBrands();
+    } catch (e) {
+      setMessage({ type: "error", text: userError(e, locale, authCopy.actionError) });
+    } finally {
+      setAuthBusyId(null);
+    }
+  };
+
+  const openReject = (brand) => {
+    setRejectTarget(brand);
+    setRejectReason("");
+  };
+
+  const confirmReject = async () => {
+    if (!rejectTarget) return;
+    setRejecting(true);
+    setMessage({ type: "", text: "" });
+    try {
+      await client.rejectBrandAuthorization(rejectTarget.id, rejectReason.trim());
+      setMessage({ type: "success", text: authCopy.rejected });
+      setRejectTarget(null);
+      setReviewTarget(null);
+      loadPending();
+      loadBrands();
+    } catch (e) {
+      setMessage({ type: "error", text: userError(e, locale, authCopy.actionError) });
+    } finally {
+      setRejecting(false);
+    }
+  };
+
+  const openVerify = (brand) => {
+    setVerifyTarget(brand);
+    setVerifyForm({
+      ...EMPTY_VERIFY,
+      trademark_number: brand.trademark_number || "",
+      trademark_jurisdiction: brand.trademark_jurisdiction || "EUIPO",
+      trademark_owner_name: brand.verification?.trademark_owner_name || "",
+      website: brand.verification?.website || "",
+      brand_type: brand.brand_type === "authorized_reseller" ? "authorized_reseller" : "own_registered",
+      ownership_role: brand.verification?.ownership_role || "owner",
+      trademark_status: brand.verification?.trademark_status || "registered",
+    });
+    setVerifyCert(null);
+    setVerifyPack(null);
+    setVerifyExtra(null);
+    setVerifyInvoice(null);
+    setMessage({ type: "", text: "" });
+  };
+
+  const closeVerify = () => {
+    setVerifyTarget(null);
+    setVerifyForm(EMPTY_VERIFY);
+    setVerifyCert(null);
+    setVerifyPack(null);
+    setVerifyExtra(null);
+    setVerifyInvoice(null);
+  };
+
+  const uploadVerifyFile = async (e, setter, key) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setVerifyUploading(key);
+    setMessage({ type: "", text: "" });
+    try {
+      const fd = new FormData();
+      appendMediaFileToFormData(fd, file);
+      const r = await client.uploadMedia(fd);
+      if (r.url) setter({ url: r.url, name: file.name });
+    } catch (e2) {
+      setMessage({ type: "error", text: userError(e2, locale, copy.documentUploadError) });
+    } finally {
+      setVerifyUploading("");
+    }
+  };
+
+  const handleVerifySubmit = async () => {
+    if (!verifyTarget) return;
+    const registered = verifyForm.brand_type === "own_registered";
+    if (registered) {
+      if (!verifyForm.trademark_number.trim()) {
+        setMessage({ type: "error", text: `${copy.trademarkNumber}: ${copy.nameRequired}` });
+        return;
+      }
+      if (!verifyForm.trademark_jurisdiction.trim()) {
+        setMessage({ type: "error", text: `${copy.trademarkOffice}: ${copy.nameRequired}` });
+        return;
+      }
+      if (!verifyForm.trademark_owner_name.trim()) {
+        setMessage({ type: "error", text: `${copy.trademarkOwnerName}: ${copy.nameRequired}` });
+        return;
+      }
+    }
+    if (!isSuperuser) {
+      if (registered && !verifyCert) {
+        setMessage({ type: "error", text: copy.certRequired });
+        return;
+      }
+      if (registered && !verifyPack) {
+        setMessage({ type: "error", text: copy.packagingRequired });
+        return;
+      }
+      if (registered && verifyForm.ownership_role !== "owner" && !verifyExtra) {
+        setMessage({ type: "error", text: copy.extraAuthRequired });
+        return;
+      }
+      if (!registered && !verifyExtra) {
+        setMessage({ type: "error", text: copy.resellerDocRequired });
+        return;
+      }
+    }
+    const documents = [];
+    if (verifyCert) documents.push({ document_type: "trademark_certificate", file_url: verifyCert.url, file_name: verifyCert.name });
+    if (verifyPack) documents.push({ document_type: "product_packaging", file_url: verifyPack.url, file_name: verifyPack.name });
+    if (verifyExtra) documents.push({ document_type: "authorization_letter", file_url: verifyExtra.url, file_name: verifyExtra.name });
+    if (verifyInvoice) documents.push({ document_type: "purchase_invoice", file_url: verifyInvoice.url, file_name: verifyInvoice.name });
+
+    setVerifySaving(true);
+    setMessage({ type: "", text: "" });
+    try {
+      await client.verifyBrand(verifyTarget.id, {
+        brand_type: verifyForm.brand_type,
+        trademark_number: registered ? verifyForm.trademark_number.trim() : undefined,
+        trademark_jurisdiction: registered ? verifyForm.trademark_jurisdiction.trim() : undefined,
+        trademark_status: registered ? verifyForm.trademark_status : undefined,
+        trademark_owner_name: verifyForm.trademark_owner_name.trim() || undefined,
+        ownership_role: registered ? verifyForm.ownership_role : "authorized_reseller",
+        website: verifyForm.website.trim() || undefined,
+        documents,
+      });
+      setMessage({ type: "success", text: isSuperuser ? copy.verifySuccessAdmin : copy.verifySuccess });
+      closeVerify();
+      loadBrands();
+      loadPending();
+    } catch (e) {
+      setMessage({ type: "error", text: userError(e, locale, copy.verifyError) });
+    } finally {
+      setVerifySaving(false);
+    }
+  };
+
+  const handleAuthFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setAuthFileUploading(true);
+    setMessage({ type: "", text: "" });
+    try {
+      const fd = new FormData();
+      appendMediaFileToFormData(fd, file);
+      const r = await client.uploadMedia(fd);
+      if (r.url) setAuthFile({ url: r.url, name: file.name });
+    } catch (e2) {
+      setMessage({ type: "error", text: userError(e2, locale, copy.documentUploadError) });
+    } finally {
+      setAuthFileUploading(false);
+    }
+  };
+
+  const documentTypeForBrandType = (brandType) =>
+    brandType === "own_registered" ? "trademark_certificate" : "authorization_letter";
+
+  const handleReuploadDocument = async (brand) => {
+    if (!authFile) return;
+    setReuploading(true);
+    setMessage({ type: "", text: "" });
+    try {
+      await client.uploadBrandAuthDocument(brand.id, {
+        document_type: documentTypeForBrandType(brand.brand_type),
+        file_url: authFile.url,
+        file_name: authFile.name,
+      });
+      setAuthFile(null);
+      setMessage({ type: "success", text: copy.resubmitSuccess });
+      closeModal();
+      loadBrands();
+    } catch (e2) {
+      setMessage({ type: "error", text: userError(e2, locale, copy.documentUploadError) });
+    } finally {
+      setReuploading(false);
+    }
+  };
+
+  const loadBrands = () => {
+    setLoading(true);
+    setLoadError("");
+    client.getBrands()
+      .then((r) => setBrands(r.brands || []))
+      .catch((e) => {
+        setBrands([]);
+        setLoadError(userError(e, locale, copy.loadError));
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadBrands(); }, []);
+
+  // Seller-owned brands stay in their own block at the top; everyone else's catalog is below.
+  const myBrands = brands.filter((b) => b.seller_id && b.seller_id === callerId);
+  const otherBrands = brands.filter((b) => !b.seller_id || b.seller_id !== callerId);
+  const totalPages = Math.max(1, Math.ceil(otherBrands.length / BRANDS_PAGE_SIZE));
+  const pageSafe = Math.min(Math.max(1, page), totalPages);
+  const pagedOtherBrands = otherBrands.slice((pageSafe - 1) * BRANDS_PAGE_SIZE, pageSafe * BRANDS_PAGE_SIZE);
+
+  const openReview = (brand) => {
+    setReviewTarget(pendingBrands.find((b) => b.id === brand.id) || brand);
+  };
+
+  const renderBrandGrid = (list, { isMineSection }) => (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16 }}>
+      {list.map((brand) => (
+        <BrandCard
+          key={brand.id}
+          brand={brand}
+          baseUrl={baseUrl}
+          onEdit={openEdit}
+          canEdit={canEditBrand(brand)}
+          canVerify={canVerifyBrand(brand, { isSuperuser, callerId })}
+          onVerify={openVerify}
+          canReview={isSuperuser && isPendingReview(brand)}
+          onReview={openReview}
+          isSuperuser={isSuperuser}
+          isMine={isMineSection || (!!brand.seller_id && brand.seller_id === callerId)}
+          copy={copy}
+        />
+      ))}
+    </div>
+  );
+
+  const openCreate = () => {
+    setEditingBrand(null);
+    setFormData(EMPTY_FORM);
+    setSlugManuallyEdited(false);
+    setMessage({ type: "", text: "" });
+    setAuthFile(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (brand) => {
+    setEditingBrand(brand);
+    setFormData({
+      name: brand.name || "",
+      handle: brand.handle || "",
+      logo_image: brand.logo_image || "",
+      banner_image: brand.banner_image || "",
+      address: brand.address || "",
+      brand_type: brand.brand_type || "own",
+      trademark_number: brand.trademark_number || "",
+      trademark_jurisdiction: brand.trademark_jurisdiction || "",
+    });
+    setSlugManuallyEdited(true);
+    setMessage({ type: "", text: "" });
+    setAuthFile(null);
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingBrand(null);
+    setFormData(EMPTY_FORM);
+    setAuthFile(null);
+  };
+
+  const resolveUrl = (url) => {
+    if (!url) return "";
+    if (url.startsWith("http") || url.startsWith("data:")) return url;
+    return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+  };
+
+  // Can this user edit the given brand?
+  const canEditBrand = (brand) => {
+    if (isSuperuser) return true;
+    return brand.seller_id && brand.seller_id === callerId;
+  };
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    setMessage({ type: "", text: "" });
+    try {
+      if (editingBrand) {
+        // Edit: superusers can change name, others only logo+banner+address
+        const payload = {
+          logo_image: (formData.logo_image || "").trim() || null,
+          banner_image: (formData.banner_image || "").trim() || null,
+          address: (formData.address || "").trim() || null,
+        };
+        if (isSuperuser) {
+          payload.name = (formData.name || "").trim() || editingBrand.name;
+          payload.handle = (formData.handle || "").trim() || editingBrand.handle;
+        }
+        await client.updateBrand(editingBrand.id, payload);
+        setMessage({ type: "success", text: copy.updated });
+      } else {
+        const name = (formData.name || "").trim();
+        if (!name) {
+          setMessage({ type: "error", text: copy.nameRequired });
+          setSaving(false);
+          return;
+        }
+        const brandType = formData.brand_type || "own";
+        const needsAuth = !isSuperuser && (brandType === "own_registered" || brandType === "authorized_reseller");
+        if (needsAuth) {
+          if (brandType === "own_registered" && !formData.trademark_number.trim()) {
+            setMessage({ type: "error", text: `${copy.trademarkNumber}: ${copy.nameRequired}` });
+            setSaving(false);
+            return;
+          }
+          if (brandType === "own_registered" && !formData.trademark_jurisdiction.trim()) {
+            setMessage({ type: "error", text: `${copy.trademarkJurisdiction}: ${copy.nameRequired}` });
+            setSaving(false);
+            return;
+          }
+          if (!authFile) {
+            setMessage({ type: "error", text: copy.documentRequired });
+            setSaving(false);
+            return;
+          }
+        }
+        const handle = (formData.handle || "").trim() || titleToHandle(name) || "brand-" + Date.now();
+        const created = await client.createBrand({
+          name,
+          handle,
+          logo_image: (formData.logo_image || "").trim() || null,
+          banner_image: (formData.banner_image || "").trim() || null,
+          address: (formData.address || "").trim() || null,
+          brand_type: brandType,
+          trademark_number: brandType === "own_registered" ? formData.trademark_number.trim() : undefined,
+          trademark_jurisdiction: brandType === "own_registered" ? formData.trademark_jurisdiction.trim() : undefined,
+        });
+        if (authFile && created?.id) {
+          await client.uploadBrandAuthDocument(created.id, {
+            document_type: documentTypeForBrandType(brandType),
+            file_url: authFile.url,
+            file_name: authFile.name,
+          }).catch(() => {});
+        }
+        setMessage({ type: "success", text: copy.created });
+      }
+      closeModal();
+      loadBrands();
+    } catch (e) {
+      setMessage({ type: "error", text: userError(e, locale, copy.saveError) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (brand) => {
+    if (!canEditBrand(brand)) return;
+    if (!(await confirmDelete(copy.deleteConfirm(brand.name)))) return;
+    try {
+      await client.deleteBrand(brand.id);
+      loadBrands();
+    } catch (e) {
+      setMessage({ type: "error", text: userError(e, locale, copy.deleteError) });
+    }
+  };
+
+  // Is the modal in name-editable mode?
+  const nameEditable = !editingBrand || isSuperuser;
+
+  return (
+    <Page
+      title={copy.title}
+      primaryAction={{ content: copy.addBrand, onAction: openCreate }}
+    >
+      <BlockStack gap="400">
+        {message.text && (
+          <Banner
+            tone={message.type === "success" ? "success" : "critical"}
+            onDismiss={() => setMessage({ type: "", text: "" })}
+          >
+            {message.text}
+          </Banner>
+        )}
+        {loadError && (
+          <Banner tone="critical" onDismiss={() => setLoadError("")}>
+            {loadError}
+          </Banner>
+        )}
+
+        {/* ── MY BRANDS (seller-created, always on top, own block) ─────────── */}
+        {!loading && myBrands.length > 0 && (
+          <Card>
+            <BlockStack gap="400">
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="h2" variant="headingMd">{copy.myBrands}</Text>
+                <Badge tone="info">{myBrands.length}</Badge>
+              </InlineStack>
+              {renderBrandGrid(myBrands, { isMineSection: true })}
+            </BlockStack>
+          </Card>
+        )}
+
+        {/* ── ALL OTHER BRANDS (paginated grid: 4 per row, 100 per page) ───── */}
+        <Card>
+          <BlockStack gap="400">
+            <InlineStack align="space-between" blockAlign="center">
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="h2" variant="headingMd">{copy.allBrands}</Text>
+                {otherBrands.length > 0 && <Badge>{otherBrands.length}</Badge>}
+              </InlineStack>
+              {totalPages > 1 && (
+                <InlineStack gap="200" blockAlign="center">
+                  <Button size="slim" disabled={pageSafe <= 1} onClick={() => setPage(pageSafe - 1)}>‹</Button>
+                  <Text as="span" variant="bodySm" tone="subdued">{pageSafe} / {totalPages}</Text>
+                  <Button size="slim" disabled={pageSafe >= totalPages} onClick={() => setPage(pageSafe + 1)}>›</Button>
+                </InlineStack>
+              )}
+            </InlineStack>
+
+            {loading ? (
+              <Box padding="800">
+                <Text as="p" tone="subdued">{copy.loading}</Text>
+              </Box>
+            ) : otherBrands.length === 0 ? (
+              <Box padding="600" background="bg-surface-secondary" borderRadius="200">
+                <BlockStack gap="100">
+                  {myBrands.length === 0 ? (
+                    <>
+                      <Text as="p" variant="bodyMd" fontWeight="semibold">{copy.noBrandsYet}</Text>
+                      <Text as="p" tone="subdued">{copy.noBrandsHelp}</Text>
+                    </>
+                  ) : (
+                    <Text as="p" tone="subdued">{copy.noOtherBrands}</Text>
+                  )}
+                </BlockStack>
+              </Box>
+            ) : (
+              <BlockStack gap="300">
+                {!isSuperuser && (
+                  <Text as="p" variant="bodySm" tone="subdued">{copy.othersReadonly}</Text>
+                )}
+                {renderBrandGrid(pagedOtherBrands, { isMineSection: false })}
+              </BlockStack>
+            )}
+          </BlockStack>
+        </Card>
+      </BlockStack>
+
+      {/* ── Create / Edit modal ─────────────────────────────────────────── */}
+      <Modal
+        open={modalOpen}
+        onClose={closeModal}
+        title={editingBrand ? `${copy.editModal}: ${editingBrand.name}` : copy.addModal}
+        primaryAction={{
+          content: editingBrand
+            ? copy.save
+            : (!isSuperuser && (formData.brand_type === "own_registered" || formData.brand_type === "authorized_reseller"))
+              ? copy.submitForReview
+              : copy.create,
+          onAction: handleSubmit,
+          loading: saving,
+        }}
+        secondaryActions={[
+          // Delete is superuser-only, even for a brand the seller created themselves.
+          ...(editingBrand && isSuperuser ? [{ content: copy.delete, onAction: () => { closeModal(); handleDelete(editingBrand); }, destructive: true }] : []),
+          { content: copy.cancel, onAction: closeModal },
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            {message.text && (
+              <Banner tone={message.type === "success" ? "success" : "critical"}>
+                {message.text}
+              </Banner>
+            )}
+
+            {editingBrand && !isSuperuser && editingBrand.status === "pending" && (
+              <Banner tone="warning">{copy.pendingBannerText}</Banner>
+            )}
+
+            {editingBrand && !isSuperuser && editingBrand.status === "rejected" && (
+              <Banner tone="critical">
+                <BlockStack gap="200">
+                  <Text as="p">{copy.rejectedBannerText(editingBrand.rejection_reason)}</Text>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Button
+                      size="slim"
+                      onClick={() => document.getElementById("brand-reupload-input")?.click()}
+                      loading={authFileUploading}
+                    >
+                      {authFile ? authFile.name : copy.chooseFile}
+                    </Button>
+                    <input id="brand-reupload-input" type="file" accept="application/pdf,image/*" style={{ display: "none" }} onChange={handleAuthFileSelect} />
+                    {authFile && (
+                      <Button size="slim" variant="primary" onClick={() => handleReuploadDocument(editingBrand)} loading={reuploading}>
+                        {copy.reuploadDocument}
+                      </Button>
+                    )}
+                  </InlineStack>
+                </BlockStack>
+              </Banner>
+            )}
+
+            <TextField
+              label={copy.name}
+              value={formData.name}
+              onChange={(v) => {
+                if (!nameEditable) return;
+                setFormData((p) => ({
+                  ...p,
+                  name: v,
+                  handle: slugManuallyEdited ? p.handle : titleToHandle(v),
+                }));
+              }}
+              placeholder={copy.namePlaceholder}
+              autoComplete="off"
+              disabled={!nameEditable}
+              helpText={!nameEditable ? copy.nameLocked : undefined}
+            />
+
+            {nameEditable && (
+              <TextField
+                label={copy.handle}
+                value={formData.handle}
+                onChange={(v) => { setSlugManuallyEdited(true); setFormData((p) => ({ ...p, handle: v })); }}
+                placeholder={copy.handlePlaceholder}
+                autoComplete="off"
+                helpText={copy.handleHelp}
+              />
+            )}
+
+            {/* Brand type + authorization (docs/BRAND.md) — only shown when creating, superusers skip this entirely */}
+            {!editingBrand && !isSuperuser && (
+              <>
+                <Select
+                  label={copy.brandType}
+                  value={formData.brand_type}
+                  onChange={(v) => setFormData((p) => ({ ...p, brand_type: v }))}
+                  options={[
+                    { label: copy.brandTypeOwn, value: "own" },
+                    { label: copy.brandTypeRegistered, value: "own_registered" },
+                    { label: copy.brandTypeReseller, value: "authorized_reseller" },
+                  ]}
+                  helpText={
+                    formData.brand_type === "own_registered" ? copy.brandTypeRegisteredHelp
+                      : formData.brand_type === "authorized_reseller" ? copy.brandTypeResellerHelp
+                      : copy.brandTypeOwnHelp
+                  }
+                />
+
+                {formData.brand_type === "own_registered" && (
+                  <>
+                    <TextField
+                      label={copy.trademarkNumber}
+                      value={formData.trademark_number}
+                      onChange={(v) => setFormData((p) => ({ ...p, trademark_number: v }))}
+                      placeholder={copy.trademarkNumberPlaceholder}
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label={copy.trademarkJurisdiction}
+                      value={formData.trademark_jurisdiction}
+                      onChange={(v) => setFormData((p) => ({ ...p, trademark_jurisdiction: v }))}
+                      placeholder={copy.trademarkJurisdictionPlaceholder}
+                      autoComplete="off"
+                    />
+                  </>
+                )}
+
+                {(formData.brand_type === "own_registered" || formData.brand_type === "authorized_reseller") && (
+                  <BlockStack gap="150">
+                    <Text as="p" variant="bodyMd" fontWeight="medium">{copy.authDocument}</Text>
+                    <Text as="p" variant="bodySm" tone="subdued">{copy.authDocumentHelp}</Text>
+                    <InlineStack gap="200" blockAlign="center">
+                      <Button
+                        size="slim"
+                        onClick={() => document.getElementById("brand-create-doc-input")?.click()}
+                        loading={authFileUploading}
+                      >
+                        {authFile ? authFile.name : copy.chooseFile}
+                      </Button>
+                      <input id="brand-create-doc-input" type="file" accept="application/pdf,image/*" style={{ display: "none" }} onChange={handleAuthFileSelect} />
+                    </InlineStack>
+                  </BlockStack>
+                )}
+              </>
+            )}
+
+            <Divider />
+
+            {/* Logo */}
+            <Text as="p" variant="bodyMd" fontWeight="medium">{copy.logo}</Text>
+            <InlineStack gap="300" blockAlign="center">
+              {formData.logo_image ? (
+                <div>
+                  <img src={resolveUrl(formData.logo_image)} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: "50%", border: "1px solid #e6dfd4", display: "block", marginBottom: 4 }} />
+                  <Button size="slim" variant="plain" tone="critical" onClick={() => setFormData((p) => ({ ...p, logo_image: "" }))}>{copy.remove}</Button>
+                </div>
+              ) : (
+                <div style={{ width: 64, height: 64, borderRadius: "50%", border: "2px dashed #d6ccbd", display: "flex", alignItems: "center", justifyContent: "center", background: "#faf7f2", color: "#a39a8d", fontSize: 20 }}>
+                  +
+                </div>
+              )}
+              <Button size="slim" variant="secondary" onClick={() => setLogoPickerOpen(true)}>
+                {formData.logo_image ? copy.changeLogo : copy.selectLogo}
+              </Button>
+            </InlineStack>
+
+            {/* Banner */}
+            <Text as="p" variant="bodyMd" fontWeight="medium">{copy.banner}</Text>
+            <InlineStack gap="300" blockAlign="center">
+              {formData.banner_image ? (
+                <div>
+                  <img src={resolveUrl(formData.banner_image)} alt="" style={{ width: 160, height: 50, objectFit: "cover", borderRadius: 6, border: "1px solid #e6dfd4", display: "block", marginBottom: 4 }} />
+                  <Button size="slim" variant="plain" tone="critical" onClick={() => setFormData((p) => ({ ...p, banner_image: "" }))}>{copy.remove}</Button>
+                </div>
+              ) : (
+                <div style={{ width: 160, height: 50, borderRadius: 6, border: "2px dashed #d6ccbd", display: "flex", alignItems: "center", justifyContent: "center", background: "#faf7f2", color: "#a39a8d", fontSize: 11 }}>
+                  Banner (21:6)
+                </div>
+              )}
+              <Button size="slim" variant="secondary" onClick={() => setBannerPickerOpen(true)}>
+                {formData.banner_image ? copy.changeBanner : copy.selectBanner}
+              </Button>
+            </InlineStack>
+
+            {isSuperuser && (
+              <TextField
+                label={copy.address}
+                value={formData.address}
+                onChange={(v) => setFormData((p) => ({ ...p, address: v }))}
+                placeholder={copy.optional}
+                multiline={2}
+                autoComplete="off"
+              />
+            )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      {/* ── Verify brand (seller: own brands only; superuser: any) ──────── */}
+      <Modal
+        open={!!verifyTarget}
+        onClose={closeVerify}
+        title={verifyTarget ? `${copy.verifyModalTitle}: ${verifyTarget.name}` : copy.verifyModalTitle}
+        primaryAction={{
+          content: isSuperuser ? copy.verifySubmitAdmin : copy.verifySubmit,
+          onAction: handleVerifySubmit,
+          loading: verifySaving,
+        }}
+        secondaryActions={[{ content: copy.cancel, onAction: closeVerify }]}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            {message.text && (
+              <Banner tone={message.type === "success" ? "success" : "critical"}>{message.text}</Banner>
+            )}
+            <Text as="p" variant="bodySm" tone="subdued">{copy.verifyIntro}</Text>
+            <Select
+              label={copy.brandType}
+              value={verifyForm.brand_type}
+              onChange={(v) => setVerifyForm((p) => ({ ...p, brand_type: v }))}
+              options={[
+                { label: copy.brandTypeRegistered, value: "own_registered" },
+                { label: copy.brandTypeReseller, value: "authorized_reseller" },
+              ]}
+            />
+
+            {verifyForm.brand_type === "own_registered" && (
+              <>
+                <Select
+                  label={copy.trademarkOffice}
+                  value={verifyForm.trademark_jurisdiction}
+                  onChange={(v) => setVerifyForm((p) => ({ ...p, trademark_jurisdiction: v }))}
+                  options={[
+                    { label: copy.officeEuipo, value: "EUIPO" },
+                    { label: copy.officeDpma, value: "DPMA" },
+                    { label: copy.officeTurkpatent, value: "TÜRKPATENT" },
+                    { label: copy.officeInpi, value: "INPI" },
+                    { label: copy.officeUibm, value: "UIBM" },
+                    { label: copy.officeOepm, value: "OEPM" },
+                    { label: copy.officeUkipo, value: "UKIPO" },
+                    { label: copy.officeUspto, value: "USPTO" },
+                    { label: copy.officeWipo, value: "WIPO" },
+                    { label: copy.officeOther, value: "OTHER" },
+                  ]}
+                />
+                <TextField
+                  label={copy.trademarkNumber}
+                  value={verifyForm.trademark_number}
+                  onChange={(v) => setVerifyForm((p) => ({ ...p, trademark_number: v }))}
+                  placeholder={copy.trademarkNumberPlaceholder}
+                  autoComplete="off"
+                />
+                <Select
+                  label={copy.trademarkStatus}
+                  value={verifyForm.trademark_status}
+                  onChange={(v) => setVerifyForm((p) => ({ ...p, trademark_status: v }))}
+                  options={[
+                    { label: copy.trademarkRegistered, value: "registered" },
+                    { label: copy.trademarkPendingApp, value: "pending" },
+                  ]}
+                />
+                <TextField
+                  label={copy.trademarkOwnerName}
+                  value={verifyForm.trademark_owner_name}
+                  onChange={(v) => setVerifyForm((p) => ({ ...p, trademark_owner_name: v }))}
+                  helpText={copy.trademarkOwnerHelp}
+                  autoComplete="off"
+                />
+                <Select
+                  label={copy.ownershipRole}
+                  value={verifyForm.ownership_role}
+                  onChange={(v) => setVerifyForm((p) => ({ ...p, ownership_role: v }))}
+                  options={[
+                    { label: copy.roleOwner, value: "owner" },
+                    { label: copy.roleLicensee, value: "licensee" },
+                    { label: copy.roleAgent, value: "authorized_agent" },
+                  ]}
+                />
+              </>
+            )}
+
+            <TextField
+              label={copy.brandWebsite}
+              value={verifyForm.website}
+              onChange={(v) => setVerifyForm((p) => ({ ...p, website: v }))}
+              placeholder={copy.brandWebsitePlaceholder}
+              autoComplete="off"
+            />
+
+            {verifyForm.brand_type === "own_registered" && (
+              <>
+                <BlockStack gap="100">
+                  <Text as="p" variant="bodyMd" fontWeight="medium">{copy.certDocument}</Text>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Button size="slim" onClick={() => document.getElementById("verify-cert-input")?.click()} loading={verifyUploading === "cert"}>
+                      {verifyCert ? verifyCert.name : copy.chooseFile}
+                    </Button>
+                    <input id="verify-cert-input" type="file" accept="application/pdf,image/*" style={{ display: "none" }} onChange={(e) => uploadVerifyFile(e, setVerifyCert, "cert")} />
+                  </InlineStack>
+                </BlockStack>
+                <BlockStack gap="100">
+                  <Text as="p" variant="bodyMd" fontWeight="medium">{copy.packagingDocument}</Text>
+                  <Text as="p" variant="bodySm" tone="subdued">{copy.packagingHelp}</Text>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Button size="slim" onClick={() => document.getElementById("verify-pack-input")?.click()} loading={verifyUploading === "pack"}>
+                      {verifyPack ? verifyPack.name : copy.chooseFile}
+                    </Button>
+                    <input id="verify-pack-input" type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => uploadVerifyFile(e, setVerifyPack, "pack")} />
+                  </InlineStack>
+                </BlockStack>
+                {verifyForm.ownership_role !== "owner" && (
+                  <BlockStack gap="100">
+                    <Text as="p" variant="bodyMd" fontWeight="medium">{copy.extraAuthDocument}</Text>
+                    <InlineStack gap="200" blockAlign="center">
+                      <Button size="slim" onClick={() => document.getElementById("verify-extra-input")?.click()} loading={verifyUploading === "extra"}>
+                        {verifyExtra ? verifyExtra.name : copy.chooseFile}
+                      </Button>
+                      <input id="verify-extra-input" type="file" accept="application/pdf,image/*" style={{ display: "none" }} onChange={(e) => uploadVerifyFile(e, setVerifyExtra, "extra")} />
+                    </InlineStack>
+                  </BlockStack>
+                )}
+              </>
+            )}
+
+            {verifyForm.brand_type === "authorized_reseller" && (
+              <>
+                <BlockStack gap="100">
+                  <Text as="p" variant="bodyMd" fontWeight="medium">{copy.resellerDocument}</Text>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Button size="slim" onClick={() => document.getElementById("verify-extra-input")?.click()} loading={verifyUploading === "extra"}>
+                      {verifyExtra ? verifyExtra.name : copy.chooseFile}
+                    </Button>
+                    <input id="verify-extra-input" type="file" accept="application/pdf,image/*" style={{ display: "none" }} onChange={(e) => uploadVerifyFile(e, setVerifyExtra, "extra")} />
+                  </InlineStack>
+                </BlockStack>
+                <BlockStack gap="100">
+                  <Text as="p" variant="bodyMd" fontWeight="medium">{copy.invoiceDocument}</Text>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Button size="slim" onClick={() => document.getElementById("verify-invoice-input")?.click()} loading={verifyUploading === "invoice"}>
+                      {verifyInvoice ? verifyInvoice.name : copy.chooseFile}
+                    </Button>
+                    <input id="verify-invoice-input" type="file" accept="application/pdf,image/*" style={{ display: "none" }} onChange={(e) => uploadVerifyFile(e, setVerifyInvoice, "invoice")} />
+                  </InlineStack>
+                </BlockStack>
+              </>
+            )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      <Modal
+        open={!!reviewTarget}
+        onClose={() => setReviewTarget(null)}
+        title={reviewTarget ? `${authCopy.reviewTitle}: ${reviewTarget.name}` : authCopy.reviewTitle}
+        primaryAction={{
+          content: authCopy.approve,
+          onAction: () => reviewTarget && handleApprove(reviewTarget),
+          loading: !!(reviewTarget && authBusyId === reviewTarget.id),
+        }}
+        secondaryActions={[
+          { content: authCopy.reject, destructive: true, onAction: () => { if (!reviewTarget) return; const brand = reviewTarget; setReviewTarget(null); openReject(brand); } },
+          { content: authCopy.cancel, onAction: () => setReviewTarget(null) },
+        ]}
+      >
+        <Modal.Section>
+          {reviewTarget && (
+            <BlockStack gap="0">
+              <ReviewField label={copy.name}>{reviewTarget.name}</ReviewField>
+              <ReviewField label={copy.handle}>{reviewTarget.handle}</ReviewField>
+              <ReviewField label={authCopy.seller}>{reviewTarget.seller_name || reviewTarget.seller_id}</ReviewField>
+              <ReviewField label={copy.brandType}>
+                {reviewTarget.brand_type === "authorized_reseller"
+                  ? authCopy.typeReseller
+                  : reviewTarget.brand_type === "own_registered"
+                    ? authCopy.typeRegistered
+                    : copy.brandTypeOwn}
+              </ReviewField>
+              <ReviewField label={copy.address}>{reviewTarget.address}</ReviewField>
+              <ReviewField label={copy.trademarkNumber}>{reviewTarget.trademark_number}</ReviewField>
+              <ReviewField label={copy.trademarkJurisdiction}>{reviewTarget.trademark_jurisdiction}</ReviewField>
+              <ReviewField label={authCopy.trademark}>{reviewTarget.verification?.trademark_status}</ReviewField>
+              <ReviewField label={authCopy.owner}>{reviewTarget.verification?.trademark_owner_name}</ReviewField>
+              <ReviewField label={copy.ownershipRole}>{reviewTarget.verification?.ownership_role}</ReviewField>
+              <ReviewField label={authCopy.website}>{reviewTarget.verification?.website}</ReviewField>
+              <ReviewField label={authCopy.submittedOn}>
+                {reviewTarget.created_at ? new Date(reviewTarget.created_at).toLocaleString() : ""}
+              </ReviewField>
+              {(reviewTarget.documents || []).map((doc) => (
+                <ReviewField key={doc.id} label={authDocLabel(doc.document_type, authCopy)}>
+                  <Button size="slim" variant="plain" url={resolveUrl(doc.file_url)} target="_blank">
+                    {doc.file_name || authCopy.viewDocument}
+                  </Button>
+                </ReviewField>
+              ))}
+              {(!reviewTarget.documents || reviewTarget.documents.length === 0) && (
+                <ReviewField label={authCopy.documents}>{authCopy.noDocuments}</ReviewField>
+              )}
+            </BlockStack>
+          )}
+        </Modal.Section>
+      </Modal>
+
+      {/* ── Reject pending authorization modal ───────────────────────────── */}
+      <Modal
+        open={!!rejectTarget}
+        onClose={() => setRejectTarget(null)}
+        title={rejectTarget ? `${authCopy.confirmReject}: ${rejectTarget.name}` : authCopy.confirmReject}
+        primaryAction={{ content: authCopy.reject, onAction: confirmReject, loading: rejecting, destructive: true }}
+        secondaryActions={[{ content: authCopy.cancel, onAction: () => setRejectTarget(null) }]}
+      >
+        <Modal.Section>
+          <TextField
+            label={authCopy.rejectReasonLabel}
+            value={rejectReason}
+            onChange={setRejectReason}
+            multiline={3}
+            autoComplete="off"
+          />
+        </Modal.Section>
+      </Modal>
+
+      {/* Logo picker */}
+      <MediaPickerModal
+        open={logoPickerOpen}
+        onClose={() => setLogoPickerOpen(false)}
+        onSelect={(urls) => { if (urls?.[0]) setFormData((p) => ({ ...p, logo_image: urls[0] })); }}
+        multiple={false}
+        title={copy.selectLogo}
+      />
+
+      {/* Banner picker */}
+      <MediaPickerModal
+        open={bannerPickerOpen}
+        onClose={() => setBannerPickerOpen(false)}
+        onSelect={(urls) => { if (urls?.[0]) setFormData((p) => ({ ...p, banner_image: urls[0] })); }}
+        multiple={false}
+        title={copy.selectBanner}
+      />
+    </Page>
+  );
+}

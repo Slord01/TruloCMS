@@ -1,0 +1,261 @@
+﻿const path = require('path');
+const createNextIntlPlugin = require("next-intl/plugin");
+const { withSentryConfig } = require("@sentry/nextjs");
+
+// Must be relative to app root so Turbopack alias resolves correctly at runtime
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.js");
+
+// Bundle analyzer — enable by running: ANALYZE=true npm run build
+const withBundleAnalyzer = process.env.ANALYZE === 'true'
+  ? require('@next/bundle-analyzer')({ enabled: true })
+  : (cfg) => cfg;
+
+/** Monorepo kökü — aksi halde Next, üst dizindeki başka package-lock.json'ı seçip yanlış root kullanıyor (Windows'ta 500 / tracing hataları). */
+const monorepoRoot = path.join(__dirname, "../..");
+const devHost = process.env.NEXT_PUBLIC_SITE_URL
+  ? (() => {
+      try {
+        return new URL(process.env.NEXT_PUBLIC_SITE_URL).origin;
+      } catch {
+        return null;
+      }
+    })()
+  : null;
+
+const extraAllowedDevOrigins = (process.env.SHOP_ALLOWED_DEV_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+// Default dev origins only allow loopback. Add LAN IPs (or any other origin)
+// via SHOP_ALLOWED_DEV_ORIGINS=http://192.168.x.x:3000,http://10.x.x.x:3000
+// in .env.local. Production builds ignore this list entirely (Next.js only
+// applies allowedDevOrigins to the dev server).
+const allowedDevOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  devHost,
+  ...extraAllowedDevOrigins,
+].filter(Boolean);
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  outputFileTracingRoot: monorepoRoot,
+  allowedDevOrigins,
+  reactStrictMode: true,
+  transpilePackages: ["@trulo/ui", "@trulo/lib", "@trulo/shop-theme"],
+  compiler: {
+    styledComponents: true,
+  },
+  typescript: { ignoreBuildErrors: false },
+  images: {
+    // Own-storage uploads are named `${Date.now()}-*.webp` (media.js) — a re-upload always gets
+    // a new URL, never overwrites one in place — so the optimizer's cached copy at a given URL
+    // is safe to keep for a long time. Next's default is 60s; bump to 1 year (its documented
+    // example value) so the same optimized image isn't re-derived on every cache-header expiry.
+    minimumCacheTTL: 31536000,
+    remotePatterns: [
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+      },
+      // Product images can come from our own backend OR any seller-supplied external URL
+      // (CSV bulk import accepts arbitrary image_url_1/2/3 values) — CSP (img-src) already
+      // allows any https source for the same reason, so this mirrors an existing trust
+      // boundary rather than widening it.
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
+  },
+  // Vercel deployment için optimize
+  output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
+  // next-intl: Turbopack must resolve 'next-intl/config' to our request.js (required for SSG/build)
+  turbopack: {
+    resolveAlias: {
+      'next-intl/config': './src/i18n/request.js',
+      // Monorepo workspace symlink eksikse (npm install kökten çalışmazsa) yine çözülsün
+      '@trulo/lib': '../../packages/lib',
+      '@trulo/ui': '../../packages/ui',
+    },
+  },
+  async rewrites() {
+    const backendBase = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+    // Keep in sync with SHOP_LOCALES in src/lib/shop-market.js.
+    // Public URLs are /{country}/{locale}/…; App Router files live at /{locale}/….
+    // Middleware rewrites the document/RSC request; beforeFiles is what the client
+    // router uses to match those public hrefs on first click (middleware alone is not).
+    const localeSeg = "en|de|tr|fr|it|es";
+    return {
+      beforeFiles: [
+        {
+          source: `/:country([a-z]{2})/:locale(${localeSeg})`,
+          destination: "/:locale",
+        },
+        {
+          source: `/:country([a-z]{2})/:locale(${localeSeg})/:path*`,
+          destination: "/:locale/:path*",
+        },
+      ],
+      afterFiles: [
+        {
+          source: "/uploads/:path*",
+          destination: `${backendBase}/uploads/:path*`,
+        },
+      ],
+    };
+  },
+
+  async headers() {
+    // Content-Security-Policy — split across named directives for readability.
+    // 'unsafe-inline' + 'unsafe-eval' are required by Next.js inline scripts and
+    // styled-components; nonce-based CSP would remove these but requires middleware
+    // changes that are out of scope here. The remaining directives still provide
+    // meaningful protection against clickjacking, base-tag injection, and data exfil.
+    const csp = [
+      "default-src 'self'",
+      // Next.js hydration, styled-components, Stripe SDK, Trustpilot widget, GA4 (Görev 28 — no-op until NEXT_PUBLIC_GA_MEASUREMENT_ID is set)
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://widget.trustpilot.com https://invitejs.trustpilot.com https://www.googletagmanager.com",
+      // Styled-components injects inline styles; Google Fonts from layout/theme
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      // Stripe / Sentry may spawn blob workers
+      "worker-src 'self' blob:",
+      // Product images from any HTTPS source; data URIs for QR codes / placeholders
+      "img-src 'self' data: blob: https:",
+      // Web fonts
+      "font-src 'self' data: https://fonts.gstatic.com",
+      // Fetch/XHR: backend API, Sentry tunnel, PostHog analytics, Stripe
+      // In development also allow http://localhost:* for the local backend
+      `connect-src 'self' https: wss:${process.env.NODE_ENV !== 'production' ? ' http://localhost:9000 http://localhost:* ws://localhost:*' : ''}`,
+      // Stripe payment iframes (wildcard covers js/hooks/m/connect-js etc.), Trustpilot rating widget
+      "frame-src https://*.stripe.com https://widget.trustpilot.com",
+      // No embedding of this page in foreign iframes
+      "frame-ancestors 'self'",
+      // Disable plugins (Flash, etc.)
+      "object-src 'none'",
+      // Prevent <base> tag injection
+      "base-uri 'self'",
+      // Only allow forms to submit to same origin or Stripe hosted checkout
+      "form-action 'self' https://checkout.stripe.com",
+    ].join("; ");
+
+    // The Sellercentral landing-page editor embeds ONE specific shop route (/:locale/cms-preview,
+    // a client-only route with no real data — it only ever renders whatever draft JSON the editor
+    // posts to it via postMessage) in an iframe for its live "vitrin" panel. Every other shop page
+    // keeps the strict frame-ancestors 'self' above; this is a narrow, explicit exception for that
+    // one route, allowing only the sellercentral origin (+ localhost in dev) to frame it.
+    const sellercentralOrigin = (process.env.NEXT_PUBLIC_SELLERCENTRAL_URL || "").replace(/\/$/, "");
+    const previewCsp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://widget.trustpilot.com https://invitejs.trustpilot.com https://www.googletagmanager.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "worker-src 'self' blob:",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      `connect-src 'self' https: wss:${process.env.NODE_ENV !== 'production' ? ' http://localhost:9000 http://localhost:* ws://localhost:*' : ''}`,
+      "frame-src https://*.stripe.com https://widget.trustpilot.com",
+      `frame-ancestors 'self'${sellercentralOrigin ? ` ${sellercentralOrigin}` : ''}${process.env.NODE_ENV !== 'production' ? ' http://localhost:*' : ''}`,
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self' https://checkout.stripe.com",
+    ].join("; ");
+
+    return [
+      {
+        // Everything except /:locale/cms-preview — that route gets its own relaxed frame-ancestors
+        // block below instead (kept separate so there's no ambiguity about which CSP value a
+        // browser receives for that path).
+        source: "/((?!(?:de|en|tr|fr|es|it)/cms-preview(?:/|$)).*)",
+        headers: [
+          { key: "Content-Security-Policy", value: csp },
+          // Prevent clickjacking (legacy browsers — frame-ancestors above covers modern ones)
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          // Prevent MIME-type sniffing
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // Referrer policy — don't leak full URL to third parties
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // HSTS — force HTTPS for 1 year (production only; harmless in dev)
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+          // Permissions — disable unused browser APIs
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // Basic XSS protection for older browsers
+          { key: "X-XSS-Protection", value: "1; mode=block" },
+        ],
+      },
+      {
+        source: "/:locale(de|en|tr|fr|es|it)/cms-preview",
+        headers: [
+          { key: "Content-Security-Policy", value: previewCsp },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "X-XSS-Protection", value: "1; mode=block" },
+        ],
+      },
+      // API routes — no caching by default
+      {
+        source: "/api/(.*)",
+        headers: [
+          { key: "Cache-Control", value: "no-store, max-age=0" },
+        ],
+      },
+    ];
+  },
+};
+
+const sentryWrapped = withSentryConfig(withNextIntl(nextConfig), {
+  // For all available options, see:
+  // https://www.npmjs.com/package/@sentry/webpack-plugin#options
+
+  org: "murathan-cotuk",
+  project: "trulo-shop",
+
+  // Only print logs for uploading source maps in CI
+  silent: !process.env.CI,
+
+  // For all available options, see:
+  // https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
+
+  // Upload a larger set of source maps for prettier stack traces (increases build time)
+  widenClientFileUpload: true,
+
+  // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
+  // This can increase your server load as well as your hosting bill.
+  // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
+  // side errors will fail.
+  tunnelRoute: "/monitoring",
+
+  webpack: (config, { isServer }) => {
+    // Path alias support + next-intl config (when webpack is used)
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(__dirname, './src'),
+      'next-intl/config': path.resolve(__dirname, 'src/i18n/request.js'),
+      '@trulo/lib': path.resolve(monorepoRoot, 'packages/lib'),
+      '@trulo/ui': path.resolve(monorepoRoot, 'packages/ui'),
+    };
+    
+    // Node.js modüllerini client-side'da exclude et
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        'child_process': false,
+        'fs': false,
+        'net': false,
+        'tls': false,
+        'crypto': false,
+      };
+    }
+    
+    return config;
+  },
+});
+
+// Bundle analyzer — opt-in via: ANALYZE=true npm run build
+// Install when needed: npm add -D @next/bundle-analyzer
+module.exports = withBundleAnalyzer(sentryWrapped);
+

@@ -1,0 +1,34 @@
+﻿"use client";
+
+import { Suspense } from "react";
+import { useAuthGuard } from "@trulo/lib";
+import { useTranslations } from "next-intl";
+import ShopHeader from "@/components/ShopHeader";
+import Footer from "@/components/Footer";
+import GlobalPageLoader from "@/components/ui/GlobalPageLoader";
+import AccountPageLayout, { ACCOUNT_PAGE_MAIN_INNER } from "@/components/account/AccountPageLayout";
+import CaseInbox from "@/components/support/CaseInbox";
+
+export default function NachrichtenPage() {
+  useAuthGuard({ requiredRole: "customer", redirectTo: "/login" });
+  const tMessages = useTranslations("pages.messages");
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fafafa" }}>
+      <ShopHeader />
+      <main style={{ flex: 1 }}>
+        {/* Wider than the shared ACCOUNT_PAGE_MAIN_INNER: this page hosts a two-pane
+            case list + conversation view (CaseInbox), which needs real width to keep
+            messages readable, unlike the narrow forms/lists on other account pages. */}
+        <div style={{ ...ACCOUNT_PAGE_MAIN_INNER, maxWidth: 1600 }}>
+          <AccountPageLayout title={tMessages("title")}>
+            <Suspense fallback={<GlobalPageLoader />}>
+              <CaseInbox embedded />
+            </Suspense>
+          </AccountPageLayout>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*local"],
+  "globalEnv": [
+    "NODE_ENV",
+    "NEXT_PUBLIC_CMS_BACKEND_URL",
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    "NEXT_PUBLIC_DEVELOPER_PORTAL_URL",
+    "NEXT_PUBLIC_DEVELOPER_API_PREFIX",
+    "DEVELOPER_JWT_SECRET",
+    "APP_PLATFORM_AUTO_APPROVE",
+    "SUPERUSER_EMAILS"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "build/**"],
+      "env": [
+        "NODE_ENV",
+        "NEXT_PUBLIC_CMS_BACKEND_URL",
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "NEXT_PUBLIC_DEVELOPER_PORTAL_URL",
+        "NEXT_PUBLIC_DEVELOPER_API_PREFIX",
+        "DEVELOPER_JWT_SECRET",
+        "APP_PLATFORM_AUTO_APPROVE",
+        "SUPERUSER_EMAILS"
+      ]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "env": ["NODE_ENV"]
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

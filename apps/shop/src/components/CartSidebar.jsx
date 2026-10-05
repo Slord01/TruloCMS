@@ -1,0 +1,943 @@
+"use client";
+
+import React, { useState, useEffect, useMemo } from "react";
+import styled from "styled-components";
+import { useLocale, useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
+import { useCart } from "@/context/CartContext";
+import { formatPriceCents, getLocalizedCartLineTitle } from "@/lib/format";
+import { useMarketPrefix } from "@/context/MarketPrefixContext";
+import { useShippingCountryForQuotes } from "@/hooks/useShippingCountryForQuotes";
+import { computeSellerShipping, useSellerFreeShippingThresholds } from "@/lib/seller-shipping";
+import SellerShippingBreakdown from "@/components/SellerShippingBreakdown";
+import { storefrontProductHandle } from "@/lib/product-url-handle";
+import { resolveImageUrl } from "@/lib/image-url";
+import { bonusPointsForCents } from "@/components/product/PdpExtras";
+import { cachedJsonFetch } from "@/lib/browser-fetch-cache";
+
+/** Cart lines saved without a thumbnail (product had only a gallery) get their image from the product. */
+function useCartLineImages(items) {
+  const [byProduct, setByProduct] = useState({});
+  const missing = items
+    .filter((it) => !String(it?.thumbnail || "").trim() && it?.product_id)
+    .map((it) => String(it.product_id));
+  const key = [...new Set(missing)].sort().join(",");
+  useEffect(() => {
+    if (!key) return undefined;
+    let cancelled = false;
+    Promise.all(
+      key.split(",").map((id) =>
+        cachedJsonFetch(`/api/store-products/${encodeURIComponent(id)}`, { ttlMs: 300000 })
+          .then((d) => [id, d?.product || null])
+          .catch(() => [id, null]),
+      ),
+    ).then((pairs) => {
+      if (cancelled) return;
+      setByProduct((prev) => {
+        const next = { ...prev };
+        for (const [id, p] of pairs) if (p) next[id] = p;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+  return (item) => {
+    const own = String(item?.thumbnail || "").trim();
+    if (own) return resolveImageUrl(own);
+    const p = byProduct[String(item?.product_id || "")];
+    if (!p) return "";
+    const v = (p.variants || []).find((x) => String(x.id) === String(item.variant_id));
+    const raw = v?.metadata?.image_url || v?.metadata?.images?.[0] || v?.images?.[0]?.url || v?.thumbnail || p.thumbnail || p.images?.[0]?.url || "";
+    return raw ? resolveImageUrl(typeof raw === "string" ? raw : raw?.url || "") : "";
+  };
+}
+
+/* Above MobileNav bar (2147483640) — nav bar hides behind cart when open */
+const CART_Z_OVERLAY = 2147483641;
+const CART_Z_DRAWER = 2147483642;
+
+const Overlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: ${CART_Z_OVERLAY};
+  opacity: ${(p) => (p.$open ? 1 : 0)};
+  pointer-events: ${(p) => (p.$open ? "auto" : "none")};
+  transition: opacity var(--app-duration-surface, 0.3s) var(--app-ease-out, cubic-bezier(0.4, 0, 0.2, 1));
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+`;
+
+const Drawer = styled.aside`
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 460px;
+  max-width: 100vw;
+  height: 100vh;
+  background: #fff;
+  border-radius: 24px 0 0 24px;
+  overflow: hidden;
+  box-shadow: ${(p) => (p.$open ? "-24px 0 48px rgba(29, 27, 24, 0.18)" : "none")};
+  @media (max-width: 767px) {
+    border-radius: 0;
+  }
+  z-index: ${CART_Z_DRAWER};
+  display: flex;
+  flex-direction: column;
+  transform: translateX(${(p) => (p.$open ? 0 : "100%")});
+  transition: transform var(--app-duration-surface, 0.3s) var(--app-ease-out, cubic-bezier(0.4, 0, 0.2, 1));
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+
+  @media (max-width: 1023px) {
+    height: 100dvh;
+  }
+`;
+
+const Header = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #efe8dd;
+  flex-shrink: 0;
+`;
+
+const Title = styled.h2`
+  margin: 0;
+  font-family: var(--h2-ff, inherit);
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--body-color, #1d1b18);
+`;
+
+const CloseBtn = styled.button`
+  background: #f6f2ec;
+  border: none;
+  padding: 0;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--body-color, #1d1b18);
+  border-radius: 50%;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+  &:hover {
+    background: #ece5da;
+  }
+`;
+
+const Scroll = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 24px 16px;
+  overscroll-behavior: contain;
+`;
+
+const Item = styled.div`
+  display: flex;
+  gap: 14px;
+  padding: 16px 0;
+  border-bottom: 1px solid #efe8dd;
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const ItemImage = styled.div`
+  position: relative;
+  width: 88px;
+  height: 88px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f3f4f6;
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #fff;
+  }
+`;
+
+const ItemBody = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const RemoveBtn = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  align-self: flex-start;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+  &:hover:not(:disabled) {
+    color: #ef4444;
+    background: #fef2f2;
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const ItemTitle = styled.div`
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--body-color, #1d1b18);
+  margin-bottom: 4px;
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+`;
+
+const ItemPrice = styled.div`
+  font-size: 0.875rem;
+  color: #5e574e;
+  margin-bottom: 10px;
+`;
+
+const QtyRow = styled.div`
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #cfc6b8;
+  border-radius: 999px;
+  background: #fff;
+  overflow: hidden;
+`;
+
+const QtyBtn = styled.button`
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  color: #6b7280;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  &:hover:not(:disabled) {
+    background: #e5e7eb;
+    color: #111827;
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const QtyInput = styled.input`
+  width: 32px;
+  height: 36px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  border: 0;
+  background: transparent;
+  outline: none;
+  min-width: 0;
+  padding: 0 2px;
+  &::-webkit-outer-spin-button,
+  &::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  &[type="number"] { -moz-appearance: textfield; }
+  &:disabled { opacity: 0.5; }
+`;
+
+function QtyInputCell({ itemId, quantity, disabled, onUpdate }) {
+  const [draft, setDraft] = useState(String(quantity));
+  useEffect(() => { setDraft(String(quantity)); }, [quantity]);
+  const commit = () => {
+    const val = parseInt(draft, 10);
+    if (!isNaN(val) && val >= 1 && val !== quantity) onUpdate(itemId, val);
+    else setDraft(String(quantity));
+  };
+  return (
+    <QtyInput
+      type="number"
+      min="1"
+      disabled={disabled}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+    />
+  );
+}
+
+const Footer = styled.div`
+  padding: 18px 24px 22px;
+  border-top: 1px solid #efe8dd;
+  flex-shrink: 0;
+  background: #fff;
+
+  @media (max-width: 767px) {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+  }
+`;
+
+const Row = styled.div`
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+  color: #4b5563;
+`;
+const RowTotal = styled(Row)`
+  align-items: baseline;
+  font-family: var(--h2-ff, inherit);
+  font-weight: 800;
+  font-size: 1.35rem;
+  color: var(--body-color, #1d1b18);
+  margin-top: 12px;
+  margin-bottom: 16px;
+`;
+
+const PrimaryBtn = styled.a`
+  display: block;
+  text-align: center;
+  padding: 16px 20px;
+  background: var(--btn-atc-bg, var(--shop-primary, #ee8a12));
+  color: var(--btn-atc-text, #fff);
+  font-weight: 700;
+  font-size: 1.0625rem;
+  border-radius: 999px;
+  text-decoration: none;
+  margin-bottom: 12px;
+  &:hover {
+    background: var(--btn-atc-hover-bg, var(--shop-accent, #e65f00));
+    color: var(--btn-atc-text, #fff);
+  }
+`;
+
+/** Mobilde (≤767px) en üstte “Kasse” — alttaki tekrar etmesin */
+const MobileTopCheckout = styled.div`
+  display: none;
+  flex-shrink: 0;
+  padding: 12px 20px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+
+  @media (max-width: 767px) {
+    display: block;
+  }
+`;
+
+const MobileTopCheckoutBtn = styled(PrimaryBtn)`
+  margin-bottom: 0;
+`;
+
+const FooterPrimaryBtn = styled(PrimaryBtn)``;
+
+const TextLink = styled(Link)`
+  display: block;
+  text-align: center;
+  padding: 12px 16px;
+  border: 2px solid var(--body-color, #1d1b18);
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--body-color, #1d1b18);
+  text-decoration: none;
+  &:hover {
+    background: #f6f2ec;
+  }
+`;
+
+/* "Passt dazu" (design): compact two-up tiles — thumb, name, price, round add button. */
+const MatchGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+`;
+
+const MatchTile = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: #faf6ef;
+  min-width: 0;
+  .mt-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+    color: inherit;
+    text-decoration: none;
+  }
+  .mt-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: #efe8dd;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .mt-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .mt-text { display: flex; flex-direction: column; min-width: 0; font-size: 13px; line-height: 1.3; }
+  .mt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mt-add {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--btn-atc-bg, var(--shop-primary, #ee8a12));
+    color: var(--btn-atc-text, #1d1b18);
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .mt-add:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+const Empty = styled.p`
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.9375rem;
+  padding: 32px 16px;
+  margin: 0;
+`;
+
+const RecommendedWrap = styled.div`
+  margin-top: 8px;
+`;
+
+const RecommendedTitle = styled.h3`
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1f2937;
+`;
+
+/** Arama panelindeki „Weiter einkaufen“ ile aynı mantık: yatay kaydırmalı kart şeridi */
+const RecommendedStrip = styled.div`
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  padding: 0 0 14px;
+  margin-left: -20px;
+  margin-right: -20px;
+  padding-left: 20px;
+  padding-right: 20px;
+  scrollbar-width: thin;
+
+  &::-webkit-scrollbar {
+    height: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 999px;
+  }
+`;
+
+const RecommendedCard = styled.div`
+  flex: 0 0 calc(50% - 5px);
+  min-width: calc(50% - 5px);
+  max-width: calc(50% - 5px);
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  padding: 7px;
+  border: 1px solid #eceff3;
+  border-radius: 12px;
+  background: #fff;
+  box-sizing: border-box;
+`;
+
+const RecommendedThumb = styled.div`
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f3f4f6;
+  margin-bottom: 6px;
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+`;
+
+const RecommendedItemLink = styled(Link)`
+  display: block;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  flex: 1;
+`;
+
+const RecommendedName = styled.div`
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #111827;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 3px;
+`;
+
+const RecommendedPrice = styled.div`
+  font-size: 10px;
+  color: #6b7280;
+  margin-bottom: 6px;
+`;
+
+const QuickAddBtn = styled.button`
+  width: 100%;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: #ee8a12;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: auto;
+  -webkit-tap-highlight-color: transparent;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const BestsellerSection = styled.div`
+  margin-top: 20px;
+`;
+
+const BestsellerSectionTitle = styled.h3`
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1f2937;
+`;
+
+const FreeShipBar = styled.div`
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #faf6ef;
+  font-size: 13px;
+  line-height: 1.4;
+  .track {
+    margin-top: 8px;
+    height: 6px;
+    border-radius: 3px;
+    background: #efe8dd;
+    overflow: hidden;
+  }
+  .fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--shop-primary, #ee8a12);
+    transition: width 0.3s ease;
+  }
+`;
+
+export default function CartSidebar() {
+  const locale = useLocale();
+  const tCart = useTranslations("cart");
+  const tPanel = useTranslations("accountPanel");
+  const { cart, sidebarOpen, closeCartSidebar, updateLineItem, removeLineItem, addToCart, loading, subtotalCents, bonusDiscountCents, shippingGroups } = useCart();
+  const items = cart?.items || [];
+  const lineImage = useCartLineImages(items);
+  const tProduct = useTranslations("product");
+  const tUi = useTranslations("shopUi");
+  const prefix = useMarketPrefix();
+  const marketCountry = (prefix?.split("/").filter(Boolean)[0] || "de").toUpperCase();
+  const countryCode = useShippingCountryForQuotes(marketCountry);
+  const effectiveTotal = subtotalCents - bonusDiscountCents;
+  // Each seller's own shipping + own free-shipping threshold; total = sum over sellers.
+  const sellerThresholds = useSellerFreeShippingThresholds(items);
+  const sellerShipping = useMemo(
+    () => computeSellerShipping(items, shippingGroups, sellerThresholds, countryCode),
+    [items, shippingGroups, sellerThresholds, countryCode],
+  );
+  const shippingCents = sellerShipping.totalCents;
+  const isFree = sellerShipping.anyPriced && shippingCents === 0;
+  const shippingLabel = isFree
+    ? tCart("freeShipping")
+    : shippingCents != null
+      ? `${formatPriceCents(shippingCents)} €`
+      : tCart("shipping");
+  const [recommended, setRecommended] = useState([]);
+  const [recommendedLoading, setRecommendedLoading] = useState(false);
+  const [bestsellers, setBestsellers] = useState([]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    let cancelled = false;
+    fetch("/api/store-products?limit=200")
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        const list = Array.isArray(d?.products) ? d.products : [];
+        const mapped = list
+          .map((p) => {
+            const meta = p.metadata || {};
+            const salesScore = Number(meta.sold_last_month || meta.sold || meta.sales_count || 0);
+            const isBs = salesScore > 0 || meta.is_bestseller === true || meta.is_bestseller === "true" || String(meta.badge || "").toLowerCase() === "bestseller";
+            const price = Number(p?.variants?.[0]?.calculated_price?.calculated_amount ?? p?.variants?.[0]?.prices?.[0]?.amount ?? p.price_cents ?? 0);
+            return { id: p.id, handle: String(p.handle || p.id || "").replace(/^\//, ""), title: p.title || "", thumbnail: p.thumbnail || "", price, salesScore, isBs, variantId: p?.variants?.[0]?.id || "", sellerId: p?.seller_id || p?.metadata?.seller_id || null };
+          })
+          .filter((p) => p.handle && (p.isBs || p.salesScore > 0))
+          .sort((a, b) => b.salesScore - a.salesScore)
+          .slice(0, 8);
+        if (!cancelled) setBestsellers(mapped);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sidebarOpen]);
+
+  const hasItems = items.length > 0;
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    let cancelled = false;
+    setRecommendedLoading(true);
+    fetch("/api/store-products?limit=8")
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        const list = Array.isArray(d?.products) ? d.products : [];
+        const mapped = list
+          .map((p) => {
+            const price =
+              Number(p?.variants?.[0]?.calculated_price?.calculated_amount ?? p?.variants?.[0]?.prices?.[0]?.amount ?? 0);
+            const v0 = p?.variants?.[0] || {};
+            return {
+              id: p.id,
+              handle: String(p.handle || p.id || "").replace(/^\//, ""),
+              title: p.title || "Produkt",
+              thumbnail: p.thumbnail || p.images?.[0]?.url || "",
+              price,
+              variantId: p?.variants?.[0]?.id || "",
+              sellerId:
+                p?.seller_id ||
+                p?.metadata?.seller_id ||
+                v0?.seller_id ||
+                v0?.metadata?.seller_id ||
+                v0?.product?.seller_id ||
+                v0?.product?.metadata?.seller_id ||
+                null,
+            };
+          })
+          .filter((p) => p.handle && p.variantId)
+          .slice(0, 8);
+        setRecommended(mapped);
+      })
+      .catch(() => {
+        if (!cancelled) setRecommended([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRecommendedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sidebarOpen, hasItems]);
+  const cartProductIds = new Set(items.map((it) => it.product_id).filter(Boolean));
+  const matches = recommended.filter((p) => !cartProductIds.has(p.id)).slice(0, 4);
+
+  return (
+    <>
+      <Overlay $open={sidebarOpen} onClick={closeCartSidebar} aria-hidden="true" />
+      <Drawer $open={sidebarOpen} role="dialog" aria-label={tCart("title")}>
+        <Header>
+          <Title>
+            {tCart("title")}
+            {items.length > 0 ? (
+              <span style={{ color: "#8a8175", fontWeight: 500 }}> ({items.reduce((n, i) => n + (i.quantity || 0), 0)})</span>
+            ) : null}
+          </Title>
+          <CloseBtn type="button" onClick={closeCartSidebar} aria-label={tPanel("close")}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M2 2l12 12M14 2L2 14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+            </svg>
+          </CloseBtn>
+        </Header>
+        <Scroll>
+          {items.length === 0 && !loading && (
+            <>
+              <Empty>{tCart("empty")}</Empty>
+              <RecommendedWrap>
+                <RecommendedTitle>{tCart("recommendedTitle")}</RecommendedTitle>
+                {recommendedLoading && <div style={{ color: "#9ca3af", fontSize: 13 }}>{tCart("loading")}</div>}
+                {!recommendedLoading && recommended.length === 0 && (
+                  <div style={{ color: "#9ca3af", fontSize: 13 }}>{tCart("noRecommendations")}</div>
+                )}
+                {!recommendedLoading && recommended.length > 0 && (
+                  <RecommendedStrip role="region" aria-label={tCart("recommendedTitle")}>
+                    {recommended.map((p) => (
+                      <RecommendedCard key={p.id}>
+                        <RecommendedItemLink href={`/${p.handle}`} onClick={closeCartSidebar}>
+                          <RecommendedThumb>
+                            {p.thumbnail ? (
+                              <img src={p.thumbnail} alt={p.title} />
+                            ) : (
+                              <div style={{ width: "100%", height: "100%", background: "#e5e7eb" }} />
+                            )}
+                          </RecommendedThumb>
+                          <RecommendedName>{p.title}</RecommendedName>
+                          <RecommendedPrice>{formatPriceCents(p.price)}</RecommendedPrice>
+                        </RecommendedItemLink>
+                        <QuickAddBtn
+                          type="button"
+                          title={tCart("quickAdd")}
+                          aria-label={tCart("quickAdd")}
+                          disabled={loading}
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            let out = await addToCart(p.variantId, 1, p.sellerId || null);
+                            if (!out && p.sellerId) out = await addToCart(p.variantId, 1, null);
+                          }}
+                        >
+                          +
+                        </QuickAddBtn>
+                      </RecommendedCard>
+                    ))}
+                  </RecommendedStrip>
+                )}
+              </RecommendedWrap>
+              {bestsellers.length > 0 && (
+                <BestsellerSection>
+                  <BestsellerSectionTitle>{{ de: "Bestseller", en: "Bestsellers", tr: "Çok satanlar", fr: "Meilleures ventes", es: "Más vendidos", it: "Più venduti" }[locale] || "Bestsellers"}</BestsellerSectionTitle>
+                  <RecommendedStrip role="region" aria-label="Bestsellers">
+                    {bestsellers.map((p) => (
+                      <RecommendedCard key={p.id}>
+                        <RecommendedItemLink href={`/${p.handle}`} onClick={closeCartSidebar}>
+                          <RecommendedThumb>
+                            {p.thumbnail ? (
+                              <img src={p.thumbnail} alt={p.title} />
+                            ) : (
+                              <div style={{ width: "100%", height: "100%", background: "#e5e7eb" }} />
+                            )}
+                          </RecommendedThumb>
+                          <RecommendedName>{p.title}</RecommendedName>
+                          <RecommendedPrice>{formatPriceCents(p.price)}</RecommendedPrice>
+                        </RecommendedItemLink>
+                        <QuickAddBtn
+                          type="button"
+                          disabled={loading}
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            let out = await addToCart(p.variantId, 1, p.sellerId || null);
+                            if (!out && p.sellerId) out = await addToCart(p.variantId, 1, null);
+                          }}
+                        >
+                          +
+                        </QuickAddBtn>
+                      </RecommendedCard>
+                    ))}
+                  </RecommendedStrip>
+                </BestsellerSection>
+              )}
+            </>
+          )}
+          {items.length > 0 &&
+            sellerShipping.sellers
+              .filter((s) => s.thresholdCents != null && s.thresholdCents > 0)
+              .map((s) => (
+                <FreeShipBar role="status" key={`fsb-${s.sellerId}`}>
+                  {sellerShipping.sellers.length > 1 ? (
+                    <b style={{ display: "block", fontSize: 12, marginBottom: 2 }}>
+                      {s.sellerStoreName || tUi("sellerShippingMarketplace")}
+                    </b>
+                  ) : null}
+                  {s.free
+                    ? <b style={{ color: "#1E6B3C" }}>{tCart("freeShippingReached")}</b>
+                    : tCart("freeShippingRemaining", { amount: `${formatPriceCents(Math.max(0, s.thresholdCents - s.subtotalCents))} €` })}
+                  <div className="track" aria-hidden="true">
+                    <div className="fill" style={{ width: `${Math.min(100, Math.max(0, Math.round((s.subtotalCents / s.thresholdCents) * 100)))}%` }} />
+                  </div>
+                </FreeShipBar>
+              ))}
+          {items.map((item) => (
+            <Item key={item.id}>
+              <ItemImage>
+                {lineImage(item) ? (
+                  <img src={lineImage(item)} alt={getLocalizedCartLineTitle(item, locale)} />
+                ) : (
+                  <div style={{ width: "100%", height: "100%", background: "#e5e7eb" }} />
+                )}
+              </ItemImage>
+              <ItemBody>
+                {item.product_metadata?.brand_name || item.product_metadata?.brand ? (
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#5e574e", marginBottom: 2 }}>
+                    {item.product_metadata.brand_name || item.product_metadata.brand}
+                  </div>
+                ) : null}
+                <ItemTitle>
+                  <Link
+                    href={(() => {
+                      const url = storefrontProductHandle(
+                        { id: item.product_id, handle: item.product_handle, metadata: item.product_metadata },
+                        locale,
+                      );
+                      return url ? `/${url}` : "/";
+                    })()}
+                    onClick={closeCartSidebar}
+                    style={{ color: "inherit", textDecoration: "none" }}
+                  >
+                    {getLocalizedCartLineTitle(item, locale) || tCart("item")}
+                  </Link>
+                </ItemTitle>
+                {item.variant_title && !/^(standard|default)/i.test(String(item.variant_title)) ? (
+                  <div style={{ fontSize: 12, color: "#5e574e", marginBottom: 2 }}>{item.variant_title}</div>
+                ) : null}
+                <ItemPrice>{formatPriceCents(item.unit_price_cents || 0)}</ItemPrice>
+                <QtyRow>
+                  <QtyBtn
+                    type="button"
+                    disabled={loading || (item.quantity || 0) <= 1}
+                    onClick={() => updateLineItem(item.id, Math.max(1, (item.quantity || 1) - 1))}
+                    aria-label={tCart("decreaseQty")}
+                  >
+                    −
+                  </QtyBtn>
+                  <QtyInputCell
+                    itemId={item.id}
+                    quantity={item.quantity || 1}
+                    disabled={loading}
+                    onUpdate={updateLineItem}
+                  />
+                  <QtyBtn
+                    type="button"
+                    disabled={loading}
+                    onClick={() => updateLineItem(item.id, (item.quantity || 0) + 1)}
+                    aria-label={tCart("increaseQty")}
+                  >
+                    +
+                  </QtyBtn>
+                </QtyRow>
+              </ItemBody>
+              <RemoveBtn
+                type="button"
+                onClick={() => removeLineItem(item.id)}
+                disabled={loading}
+                aria-label={tCart("remove")}
+                title={tCart("remove")}
+              >
+                ×
+              </RemoveBtn>
+            </Item>
+          ))}
+          {items.length > 0 && matches.length > 0 && (
+            <RecommendedWrap>
+              <RecommendedTitle>{tCart("matchesTitle")}</RecommendedTitle>
+              <MatchGrid role="region" aria-label={tCart("matchesTitle")}>
+                {matches.map((p) => (
+                  <MatchTile key={p.id}>
+                    <Link href={`/${p.handle}`} onClick={closeCartSidebar} className="mt-link">
+                      <span className="mt-thumb">
+                        {p.thumbnail ? <img src={resolveImageUrl(p.thumbnail)} alt="" /> : null}
+                      </span>
+                      <span className="mt-text">
+                        <span className="mt-name">{p.title}</span>
+                        <b>{formatPriceCents(p.price)} €</b>
+                      </span>
+                    </Link>
+                    <button
+                      type="button"
+                      className="mt-add"
+                      title={tCart("quickAdd")}
+                      aria-label={tCart("quickAdd")}
+                      disabled={loading}
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        let out = await addToCart(p.variantId, 1, p.sellerId || null);
+                        if (!out && p.sellerId) out = await addToCart(p.variantId, 1, null);
+                      }}
+                    >
+                      +
+                    </button>
+                  </MatchTile>
+                ))}
+              </MatchGrid>
+            </RecommendedWrap>
+          )}
+        </Scroll>
+        {items.length > 0 && (
+          <Footer>
+            <Row>
+              <span>{tCart("subtotal")}</span>
+              <span>{formatPriceCents(subtotalCents)}</span>
+            </Row>
+            {bonusDiscountCents > 0 && (
+              <Row style={{ color: "#16a34a" }}>
+                <span>{tCart("subtotal")}</span>
+                <span>−{formatPriceCents(bonusDiscountCents)} €</span>
+              </Row>
+            )}
+            {bonusPointsForCents(effectiveTotal) > 0 ? (
+              <Row style={{ color: "#a65300", fontWeight: 700, fontSize: 13 }}>
+                <span />
+                <span>{tProduct("bonusPoints", { points: bonusPointsForCents(effectiveTotal) })}</span>
+              </Row>
+            ) : null}
+            <Row>
+              <span>{tCart("shippingLabel")}</span>
+              <span style={{ color: isFree ? "#16a34a" : undefined }}>{shippingLabel}</span>
+            </Row>
+            {sellerShipping.sellers.length > 1 ? <SellerShippingBreakdown sellerShipping={sellerShipping} compact /> : null}
+            <RowTotal>
+              <span>{tCart("total")}</span>
+              <span>{formatPriceCents(Math.max(0, subtotalCents - bonusDiscountCents + (isFree || shippingCents === null ? 0 : shippingCents)))} €</span>
+            </RowTotal>
+            <FooterPrimaryBtn href="/cart" onClick={closeCartSidebar}>
+              {tCart("checkout")}
+            </FooterPrimaryBtn>
+            <TextLink href="/cart" onClick={closeCartSidebar}>
+              {tCart("viewCart")}
+            </TextLink>
+          </Footer>
+        )}
+      </Drawer>
+    </>
+  );
+}

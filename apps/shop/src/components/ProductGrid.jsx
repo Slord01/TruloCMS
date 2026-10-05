@@ -1,0 +1,121 @@
+"use client";
+
+import { ProductCard, ProductListItem } from "@/components/ProductCard";
+import { useIsNarrow } from "@/hooks/useIsNarrow";
+import { isBestsellerMetadata } from "@/lib/bestseller";
+import styled from "styled-components";
+import { useTranslations } from "next-intl";
+
+const MOBILE_GRID_GAP = 10;
+
+const CatalogWrap = styled.div`
+  width: 100%;
+
+  /* ── Mobile (≤767px): list (1-col) or grid ───────────────────────────── */
+  @media (max-width: 767px) {
+    ${(p) => p.$mobileCols === 1 ? `
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    ` : `
+      display: grid;
+      grid-template-columns: repeat(${p.$mobileCols}, minmax(0, 1fr));
+      gap: ${MOBILE_GRID_GAP}px;
+      align-content: start;
+      /* İki sütunlu şeritte kartlar kenara yapışmasın (koleksiyon / önerilen ürünler) */
+      padding-left: 10px;
+      padding-right: 10px;
+      box-sizing: border-box;
+    `}
+  }
+
+  /* ── Tablet (768–1023px): 3-column grid (a sideways strip only showed two products) ── */
+  @media (min-width: 768px) and (max-width: 1023px) {
+    display: grid;
+    grid-template-columns: repeat(${(p) => (p.$cols ? Math.min(3, p.$cols) : 3)}, minmax(0, 1fr));
+    gap: 14px;
+    align-content: start;
+  }
+
+  /* ── Desktop (≥1024px): grid ─────────────────────────────────────────── */
+  @media (min-width: 1024px) {
+    display: grid;
+    grid-template-columns: ${(p) =>
+      p.$cols ? `repeat(${p.$cols}, minmax(0, 1fr))` : "repeat(4, minmax(0, 1fr))"};
+    gap: 16px;
+    align-content: start;
+  }
+`;
+
+const CardSlot = styled.div`
+  /* Mobile: grid handles layout, no extra styles needed */
+  @media (max-width: 767px) {
+    min-width: 0;
+  }
+
+  @media (min-width: 768px) and (max-width: 1023px) {
+    min-width: 0;
+  }
+
+  /* Desktop: grid handles layout */
+  @media (min-width: 1024px) {
+    min-width: 0;
+  }
+`;
+
+const Empty = styled.div`
+  padding: 80px 0;
+  text-align: center;
+  font-size: 13px;
+  color: #aaa;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+`;
+
+function clampCols(n) {
+  const x = Math.round(Number(n));
+  if (!Number.isFinite(x) || x < 1) return 4;
+  return Math.min(6, Math.max(1, x));
+}
+
+/**
+ * @param {number} [maxColumns=4]       — desktop grid (≥1024px)
+ * @param {number} [maxColumnsMobile=2] — mobile grid (≤767px); default 2
+ */
+export function ProductGrid({
+  products = [],
+  maxColumns = 4,
+  maxColumnsMobile = 2,
+  activeFilters = {},
+}) {
+  const isMobile = useIsNarrow(767);
+  const t = useTranslations("accountMisc");
+  const list = (Array.isArray(products) ? products : []).filter((p) => p && p.id);
+  if (!list.length) return <Empty>{t("noProducts")}</Empty>;
+
+  const cols = clampCols(maxColumns);
+  const m = clampCols(maxColumnsMobile);
+  const mobileCols = Math.max(1, Math.min(m, 3));
+  const useMobileList = isMobile && mobileCols === 1;
+
+  return (
+    <CatalogWrap
+      className="product-grid-strip"
+      data-product-strip
+      $cols={cols}
+      $mobileCols={mobileCols}
+    >
+      {list.map((p) => {
+        const bs = isBestsellerMetadata(p.metadata);
+        return (
+        <CardSlot key={p.id} $m={m}>
+          {useMobileList
+            ? <ProductListItem product={p} activeFilters={activeFilters} isBestseller={bs} />
+            : <ProductCard product={p} activeFilters={activeFilters} plainImage isBestseller={bs} />
+          }
+        </CardSlot>
+        );
+      })}
+    </CatalogWrap>
+  );
+}

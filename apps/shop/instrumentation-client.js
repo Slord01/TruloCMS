@@ -1,0 +1,55 @@
+﻿// This file configures the initialization of Sentry on the client.
+// The added config here will be used whenever a users loads a page in their browser.
+// https://docs.sentry.io/platforms/javascript/guides/nextjs/
+
+import * as Sentry from "@sentry/nextjs";
+
+// Client-side DSN MUST come from NEXT_PUBLIC_SENTRY_DSN (only NEXT_PUBLIC_*
+// env vars are exposed to the browser bundle). Hardcoded fallback kept
+// during S1.4b transition; remove once env is set on all deploy targets.
+const HARDCODED_FALLBACK_DSN_TRANSITION =
+  "https://358d148bbc5d3fff71871cae743477ec@o4510747557822464.ingest.de.sentry.io/4510747562475600";
+const SENTRY_DSN =
+  process.env.NEXT_PUBLIC_SENTRY_DSN || HARDCODED_FALLBACK_DSN_TRANSITION;
+
+Sentry.init({
+  dsn: SENTRY_DSN,
+
+  // Add optional integrations for additional features
+  integrations: [
+    Sentry.replayIntegration(),
+    Sentry.browserTracingIntegration(),
+  ],
+
+  // 100% trace sampling adds real per-navigation tracing overhead on every single page load
+  // (PageSpeed audit flagged this as part of the main-thread cost). 10% is still plenty for
+  // spotting perf regressions/error correlation without paying the cost on every visitor.
+  // Learn more: https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#tracessamplerate
+  tracesSampleRate: 0.1,
+
+  // Distributed Tracing Configuration
+  // Define which URLs should have trace propagation headers attached
+  // This helps track requests across services for distributed tracing
+  tracePropagationTargets: [
+    "localhost",
+    /^https:\/\/.*\.railway\.app\/api/,
+    /^https:\/\/trulo.*\.vercel\.app\/api/,
+    /^\/api/,
+  ],
+  // Enable logs to be sent to Sentry
+  enableLogs: true,
+
+  // Define how likely Replay events are sampled.
+  // This sets the sample rate to be 10%. You may want this to be 100% while
+  // in development and sample at a lower rate in production
+  replaysSessionSampleRate: 0.1,
+
+  // Define how likely Replay events are sampled when an error occurs.
+  replaysOnErrorSampleRate: 1.0,
+
+  // Enable sending user PII (Personally Identifiable Information)
+  // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
+  sendDefaultPii: true,
+});
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

@@ -1,0 +1,1023 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { getMedusaAdminClient } from "@/lib/medusa-admin-client";
+import { getLandingEditorCopy } from "@/lib/landing-page-editor-i18n";
+import { useLocale } from "next-intl";
+import { Link } from "@/i18n/navigation";
+import CategoryDrilldownSelect from "@/components/inputs/CategoryDrilldownSelect";
+import { seoPlainPreview } from "@/lib/product-change-request-format";
+
+const ENTITY_TYPES = [
+  { id: "products", label: "Products" },
+  { id: "categories", label: "Categories" },
+  { id: "collections", label: "Collections" },
+  { id: "pages", label: "Pages" },
+  { id: "blogs", label: "Blog posts" },
+];
+
+const SCORE_COLOR = {
+  good: "#15803d",
+  needs_work: "#b45309",
+  poor: "#b91c1c",
+};
+
+const PRODUCT_SCORE_FILTERS = [
+  { id: "", label: "All SEO status" },
+  { id: "poor", label: "Poor" },
+  { id: "needs_work", label: "Warn" },
+  { id: "good", label: "Good" },
+];
+
+const PRODUCT_SORT_OPTIONS = [
+  { id: "updated_desc", label: "Updated (newest)" },
+  { id: "updated_asc", label: "Updated (oldest)" },
+  { id: "title_asc", label: "Title A–Z" },
+  { id: "title_desc", label: "Title Z–A" },
+  { id: "score_asc", label: "SEO: poor → good" },
+  { id: "score_desc", label: "SEO: good → poor" },
+  { id: "handle_asc", label: "Handle A–Z" },
+];
+
+const filterSelectStyle = {
+  display: "block",
+  width: "100%",
+  marginTop: 4,
+  padding: "7px 10px",
+  borderRadius: 8,
+  border: "1px solid #d6ccbd",
+  fontSize: 12,
+  background: "#fff",
+};
+
+/** Sellercentral edit path for an SEO entity (locale prefix added by next-intl Link). */
+function sellercentralEditPath(entity) {
+  if (!entity?.id || !entity?.type) return "";
+  const id = encodeURIComponent(String(entity.id));
+  switch (entity.type) {
+    case "products":
+      return `/products/${id}`;
+    case "categories":
+      return `/content/categories/${id}`;
+    case "collections":
+      return `/products/collections/${id}`;
+    case "pages":
+      return `/content/pages?edit=${id}`;
+    case "blogs":
+      return `/content/blog-posts?edit=${id}`;
+    default:
+      return "";
+  }
+}
+
+function LengthBar({ label, value, idealMin, idealMax, status }) {
+  const len = String(value || "").length;
+  const pct = Math.min(100, Math.round((len / Math.max(idealMax, 1)) * 100));
+  const color = status === "ok" ? "#15803d" : status === "warn" ? "#b45309" : status === "missing" ? "#a39a8d" : "#b91c1c";
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#3a352f", marginBottom: 4 }}>
+        <span>{label}</span>
+        <span style={{ color, fontWeight: 600 }}>
+          {len} / ideal {idealMin}–{idealMax}
+        </span>
+      </div>
+      <div style={{ height: 6, background: "#e6dfd4", borderRadius: 99, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, transition: "width .2s" }} />
+      </div>
+    </div>
+  );
+}
+
+function StatChip({ label, value, warn }) {
+  return (
+    <div
+      style={{
+        minWidth: 72,
+        padding: "8px 10px",
+        borderRadius: 10,
+        background: warn ? "#fef2f2" : "#faf7f2",
+        border: `1px solid ${warn ? "#fecaca" : "#e6dfd4"}`,
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: 18, fontWeight: 700, color: warn ? "#b91c1c" : "#1d1b18" }}>{value}</div>
+      <div style={{ fontSize: 11, color: "#5e574e", marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
+function buildCategoryTree(flat) {
+  const byId = new Map();
+  for (const item of flat || []) {
+    if (!item?.id) continue;
+    const id = String(item.id);
+    byId.set(id, {
+      ...item,
+      id,
+      parent_id: item.parent_id != null && String(item.parent_id).trim() ? String(item.parent_id) : null,
+      children: [],
+    });
+  }
+  const roots = [];
+  for (const node of byId.values()) {
+    if (node.parent_id && byId.has(node.parent_id)) byId.get(node.parent_id).children.push(node);
+    else roots.push(node);
+  }
+  const sortDeep = (arr) => {
+    arr.sort(
+      (a, b) =>
+        (a.sort_order || 0) - (b.sort_order || 0) ||
+        String(a.label || "").localeCompare(String(b.label || ""), undefined, { sensitivity: "base" }),
+    );
+    arr.forEach((n) => n.children?.length && sortDeep(n.children));
+  };
+  sortDeep(roots);
+  return roots;
+}
+
+/** Ids of every node from the root down to (and including) `id`. */
+function ancestorPath(byId, id) {
+  const out = [];
+  let cur = id ? byId.get(String(id)) : null;
+  const seen = new Set();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    out.push(cur.id);
+    cur = cur.parent_id ? byId.get(cur.parent_id) : null;
+  }
+  return out.reverse();
+}
+
+/** Indented, expand/collapse category tree (mirrors Content › Categories) with search. */
+function CategorySeoNav({ items, selectedId, onSelect, search, onSearchChange }) {
+  const tree = useMemo(() => buildCategoryTree(items), [items]);
+  const byId = useMemo(() => {
+    const map = new Map();
+    const walk = (nodes) => {
+      for (const n of nodes) {
+        map.set(n.id, n);
+        if (n.children?.length) walk(n.children);
+      }
+    };
+    walk(tree);
+    return map;
+  }, [tree]);
+
+  // Which parent nodes are expanded. Default: top two levels open so the
+  // hierarchy is visible at a glance instead of a flat wall of names.
+  const [expanded, setExpanded] = useState(() => new Set());
+  useEffect(() => {
+    const next = new Set();
+    const walk = (nodes, depth) => {
+      for (const n of nodes || []) {
+        if (n.children?.length && depth < 1) next.add(n.id);
+        if (n.children?.length) walk(n.children, depth + 1);
+      }
+    };
+    walk(tree, 0);
+    setExpanded(next);
+  }, [tree]);
+
+  // Auto-open every ancestor of the selected node.
+  useEffect(() => {
+    if (!selectedId) return;
+    const path = ancestorPath(byId, selectedId);
+    if (path.length <= 1) return;
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const id of path.slice(0, -1)) next.add(id);
+      return next;
+    });
+  }, [selectedId, byId]);
+
+  const toggle = (id) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const q = String(search || "").trim();
+  const searchRows = useMemo(() => {
+    const needle = q.toLowerCase();
+    if (!needle) return [];
+    const rows = [];
+    for (const n of byId.values()) {
+      const hay = `${n.label || ""} ${n.handle || ""}`.toLowerCase();
+      if (!hay.includes(needle)) continue;
+      const breadcrumb = ancestorPath(byId, n.id)
+        .map((pid) => byId.get(pid)?.label || pid)
+        .join(" › ");
+      rows.push({ id: n.id, label: n.label, handle: n.handle, breadcrumb, score: n.score });
+    }
+    rows.sort((a, b) => a.breadcrumb.localeCompare(b.breadcrumb, undefined, { sensitivity: "base" }));
+    return rows.slice(0, 200);
+  }, [q, byId]);
+
+  const renderNode = (node, depth) => {
+    const hasKids = Array.isArray(node.children) && node.children.length > 0;
+    const isOpen = expanded.has(node.id);
+    return (
+      <div key={node.id}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "8px 12px 8px",
+            paddingLeft: 12 + depth * 16,
+            borderBottom: "1px solid #f1f5f9",
+            background: selectedId === node.id ? "#fcebd5" : depth === 0 ? "#faf7f2" : "#fff",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => hasKids && toggle(node.id)}
+            aria-label={hasKids ? (isOpen ? "Collapse" : "Expand") : undefined}
+            style={{
+              flexShrink: 0,
+              width: 20,
+              height: 20,
+              border: "none",
+              background: "transparent",
+              cursor: hasKids ? "pointer" : "default",
+              color: "#5e574e",
+              fontSize: 12,
+              lineHeight: "20px",
+            }}
+          >
+            {hasKids ? (isOpen ? "▾" : "▸") : ""}
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelect?.(node.id)}
+            style={{
+              flex: 1,
+              textAlign: "left",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              minWidth: 0,
+              padding: 0,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+              <span style={{ fontSize: 13, fontWeight: depth === 0 ? 650 : 500, color: "#1d1b18" }}>
+                {node.label}
+                {hasKids ? <span style={{ color: "#a39a8d", fontWeight: 400 }}> ({node.children.length})</span> : null}
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: SCORE_COLOR[node.score] || "#5e574e", textTransform: "uppercase" }}>
+                {node.score === "needs_work" ? "warn" : node.score}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: "#a39a8d", marginTop: 2, fontFamily: "ui-monospace, monospace" }}>
+              /{node.handle || "—"}
+            </div>
+          </button>
+        </div>
+        {hasKids && isOpen ? node.children.map((child) => renderNode(child, depth + 1)) : null}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ padding: "10px 12px", borderBottom: "1px solid #e6dfd4", display: "flex", gap: 8, alignItems: "center" }}>
+        <input
+          value={search}
+          onChange={(e) => onSearchChange?.(e.target.value)}
+          placeholder="Search categories…"
+          style={{ flex: 1, minWidth: 0, boxSizing: "border-box", padding: "8px 10px", borderRadius: 8, border: "1px solid #d6ccbd", fontSize: 13 }}
+        />
+        {!q && tree.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => {
+              const all = new Set();
+              const walk = (nodes) => nodes.forEach((n) => { if (n.children?.length) { all.add(n.id); walk(n.children); } });
+              walk(tree);
+              setExpanded((prev) => (prev.size >= all.size ? new Set() : all));
+            }}
+            style={{ border: "1px solid #d6ccbd", background: "#faf7f2", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#3a352f", padding: "6px 8px", whiteSpace: "nowrap" }}
+          >
+            Expand / collapse all
+          </button>
+        ) : null}
+      </div>
+
+      <div style={{ maxHeight: "64vh", overflow: "auto" }}>
+        {q ? (
+          searchRows.length === 0 ? (
+            <div style={{ padding: 24, textAlign: "center", color: "#a39a8d", fontSize: 13 }}>No match</div>
+          ) : (
+            searchRows.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => onSelect?.(row.id)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "10px 14px",
+                  border: "none",
+                  borderBottom: "1px solid #f1f5f9",
+                  background: selectedId === row.id ? "#fcebd5" : "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ fontSize: 12, color: "#5e574e", marginBottom: 2 }}>{row.breadcrumb || "—"}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 650, color: "#1d1b18" }}>{row.label}</div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: SCORE_COLOR[row.score] || "#5e574e", textTransform: "uppercase" }}>
+                    {row.score === "needs_work" ? "warn" : row.score}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: "#a39a8d", marginTop: 3, fontFamily: "ui-monospace, monospace" }}>
+                  /{row.handle || "—"}
+                </div>
+              </button>
+            ))
+          )
+        ) : tree.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", color: "#a39a8d", fontSize: 13 }}>No categories</div>
+        ) : (
+          tree.map((node) => renderNode(node, 0))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function draftFromEntity(e, lang) {
+  if (!e) return { meta_title: "", meta_description: "", meta_keywords: "", handle: "" };
+  const isDe = !lang || lang === "de";
+  if (isDe) {
+    return {
+      meta_title: e.meta_title || "",
+      meta_description: e.meta_description || "",
+      meta_keywords: e.meta_keywords || "",
+      handle: e.handle || "",
+    };
+  }
+  if (e.type === "pages" || e.type === "blogs") {
+    const t = e.meta_title_i18n?.[lang];
+    const d = e.meta_description_i18n?.[lang];
+    const k = e.meta_keywords_i18n?.[lang];
+    return {
+      meta_title: (t && (t.meta_title || t.title)) || "",
+      meta_description: (d && (d.meta_description || d.description)) || "",
+      meta_keywords: (k && k.meta_keywords) || "",
+      handle: e.handle || "",
+    };
+  }
+  const loc = e.seo_i18n?.[lang] || {};
+  return {
+    meta_title: loc.meta_title || "",
+    meta_description: loc.meta_description || "",
+    meta_keywords: loc.meta_keywords || "",
+    handle: e.handle || "",
+  };
+}
+
+export default function SeoHubPage() {
+  const uiLocale = useLocale();
+  const langOptions = useMemo(() => getLandingEditorCopy(uiLocale).shopContentLangOptions(), [uiLocale]);
+  const [type, setType] = useState("products");
+  const [q, setQ] = useState("");
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const [entity, setEntity] = useState(null);
+  const [draft, setDraft] = useState({ meta_title: "", meta_description: "", meta_keywords: "", handle: "" });
+  const [editLang, setEditLang] = useState("de");
+  const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [liveUrl, setLiveUrl] = useState("");
+  const [liveResult, setLiveResult] = useState(null);
+  const [rules, setRules] = useState(null);
+  const [autoMsg, setAutoMsg] = useState("");
+  const [sellerId, setSellerId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [scoreFilter, setScoreFilter] = useState("");
+  const [sort, setSort] = useState("updated_desc");
+  const [sellers, setSellers] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const isCategories = type === "categories";
+  const isProducts = type === "products";
+  const limit = isCategories ? 5000 : 40;
+
+  const client = useMemo(() => getMedusaAdminClient(), []);
+
+  const loadList = useCallback(async () => {
+    setLoading(true);
+    setErr("");
+    try {
+      const data = await client.getSeoEntities({
+        type,
+        q: isCategories ? "" : q,
+        limit,
+        offset: isCategories ? 0 : offset,
+        ...(isProducts
+          ? {
+              seller_id: sellerId || undefined,
+              category_id: categoryId || undefined,
+              score: scoreFilter || undefined,
+              sort: sort || undefined,
+            }
+          : {}),
+      });
+      setItems(Array.isArray(data?.items) ? data.items : []);
+      setTotal(typeof data?.total === "number" ? data.total : 0);
+      if (data?.rules) setRules(data.rules);
+    } catch (e) {
+      setErr(e?.message || "Failed to load SEO entities");
+      setItems([]);
+      setTotal(0);
+    }
+    setLoading(false);
+  }, [client, type, q, offset, limit, isCategories, isProducts, sellerId, categoryId, scoreFilter, sort]);
+
+  useEffect(() => {
+    client.getSeoRules().then(setRules).catch(() => {});
+  }, [client]);
+
+  useEffect(() => {
+    if (!isProducts) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [sellersRes, catsRes] = await Promise.all([
+          client.getSellers().catch(() => ({ sellers: [] })),
+          client.getAdminHubCategories({ all: true, locale: uiLocale }).catch(() => ({ categories: [] })),
+        ]);
+        if (cancelled) return;
+        const list = Array.isArray(sellersRes?.sellers) ? sellersRes.sellers : [];
+        setSellers(
+          list
+            .filter((s) => s?.seller_id)
+            .sort((a, b) =>
+              String(a.store_name || a.email || "").localeCompare(String(b.store_name || b.email || ""), undefined, {
+                sensitivity: "base",
+              }),
+            ),
+        );
+        const rawCats = Array.isArray(catsRes?.categories) ? catsRes.categories : [];
+        setCategories(rawCats);
+      } catch (_) {
+        if (!cancelled) {
+          setSellers([]);
+          setCategories([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, isProducts, uiLocale]);
+
+  useEffect(() => {
+    setSelectedId(null);
+    setEntity(null);
+    setOffset(0);
+    setQ("");
+    setSellerId("");
+    setCategoryId("");
+    setScoreFilter("");
+    setSort("updated_desc");
+    setEditLang("de");
+  }, [type]);
+
+  useEffect(() => {
+    loadList();
+  }, [loadList]);
+
+  useEffect(() => {
+    if (!entity) return;
+    setDraft(draftFromEntity(entity, editLang));
+  }, [editLang, entity]);
+
+  const openEntity = async (id) => {
+    setSelectedId(id);
+    setLiveResult(null);
+    try {
+      const data = await client.getSeoEntity(type, id);
+      const e = data?.entity;
+      setEntity(e || null);
+      setDraft(draftFromEntity(e, editLang));
+      setLiveUrl(e?.url || "");
+    } catch (e) {
+      setErr(e?.message || "Failed to load entity");
+    }
+  };
+
+  const save = async () => {
+    if (!selectedId) return;
+    setSaving(true);
+    setErr("");
+    try {
+      const payload = {
+        meta_title: draft.meta_title,
+        meta_description: draft.meta_description,
+        meta_keywords: draft.meta_keywords,
+        locale: editLang,
+        handle: draft.handle,
+      };
+      const data = await client.patchSeoEntity(type, selectedId, payload);
+      setEntity(data?.entity || null);
+      if (data?.entity?.url) setLiveUrl(data.entity.url);
+      await loadList();
+    } catch (e) {
+      const detail = Array.isArray(e?.evaluation?.issues)
+        ? e.evaluation.issues.map((i) => i.message).filter(Boolean).join(" · ")
+        : "";
+      setErr(detail || e?.message || "Save failed");
+    }
+    setSaving(false);
+  };
+
+  const runAnalyze = async () => {
+    setAnalyzing(true);
+    setErr("");
+    try {
+      const data = await client.analyzeSeo({
+        type,
+        html: entity?.content_html || "",
+        meta_title: draft.meta_title,
+        meta_description: draft.meta_description,
+        meta_keywords: draft.meta_keywords,
+        url: liveUrl || undefined,
+      });
+      if (entity) {
+        setEntity({
+          ...entity,
+          // Backend now applies template H1 — keep evaluation from analyze, preserve analysis.
+          analysis: data.analysis || entity.analysis,
+          evaluation: data.evaluation || entity.evaluation,
+        });
+      }
+      setLiveResult(data.live || null);
+    } catch (e) {
+      setErr(e?.message || "Analyze failed");
+    }
+    setAnalyzing(false);
+  };
+
+  const autoGenerate = async () => {
+    setAutoMsg("");
+    setErr("");
+    try {
+      const data = await client.autoGenerateProductSeo({ only_missing: true, limit: 500 });
+      setAutoMsg(`Updated ${data?.updated ?? 0} of ${data?.scanned ?? 0} products (missing fields only).`);
+      if (type === "products") await loadList();
+    } catch (e) {
+      setErr(e?.message || "Auto-generate failed");
+    }
+  };
+
+  const evalLive = useMemo(() => {
+    const titleLen = draft.meta_title.length;
+    const descLen = draft.meta_description.length;
+    const titleIdeal = rules?.title || { min: 50, max: 65 };
+    const descIdeal = rules?.description || { min: 150, max: 300 };
+    const titleStatus =
+      !titleLen ? "missing" : titleLen >= titleIdeal.min && titleLen <= titleIdeal.max ? "ok" : titleLen < 30 || titleLen > 70 ? "error" : "warn";
+    const descStatus =
+      !descLen ? "missing" : descLen >= descIdeal.min && descLen <= descIdeal.max ? "ok" : descLen < 70 || descLen > 320 ? "error" : "warn";
+    const kwStatus = draft.meta_keywords.trim() ? "ok" : "missing";
+    return {
+      title: { length: titleLen, status: titleStatus, idealMin: titleIdeal.min, idealMax: titleIdeal.max },
+      description: { length: descLen, status: descStatus, idealMin: descIdeal.min, idealMax: descIdeal.max },
+      keywords: { status: kwStatus, count: draft.meta_keywords.split(/[,;]+/).map((s) => s.trim()).filter(Boolean).length },
+    };
+  }, [draft, rules]);
+
+  const analysis = entity?.analysis || { headings: {}, images: 0, links: 0, imagesWithoutAlt: 0 };
+  const headings = analysis.headings || {};
+  const shopUrl = liveUrl || entity?.url || "";
+  const sellercentralUrl = sellercentralEditPath(entity);
+
+  return (
+    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "8px 4px 40px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 750, color: "#1d1b18" }}>SEO Hub</h1>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "#5e574e", maxWidth: 560 }}>
+            Meta title, description and keywords per shop language. Categories use a nested tree. Open the live shop page to verify the browser tab title.
+          </p>
+        </div>
+        {type === "products" ? (
+          <button
+            type="button"
+            onClick={autoGenerate}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1px solid #d6ccbd",
+              background: "#fff",
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Auto-generate product meta
+          </button>
+        ) : null}
+      </div>
+
+      {autoMsg ? (
+        <div style={{ marginBottom: 12, padding: "10px 12px", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 8, fontSize: 13, color: "#065f46" }}>
+          {autoMsg}
+        </div>
+      ) : null}
+      {err ? (
+        <div style={{ marginBottom: 12, padding: "10px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 13, color: "#991b1b" }}>
+          {err}
+        </div>
+      ) : null}
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 360px) 1fr", gap: 16, alignItems: "start" }}>
+        <div style={{ background: "#fff", border: "1px solid #e6dfd4", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+          <div style={{ padding: 14, borderBottom: "1px solid #e6dfd4", display: "flex", flexDirection: "column", gap: 10 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#3a352f" }}>
+              Content type
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                style={{ display: "block", width: "100%", marginTop: 6, padding: "8px 10px", borderRadius: 8, border: "1px solid #d6ccbd", fontSize: 13 }}
+              >
+                {ENTITY_TYPES.map((t) => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            </label>
+            {!isCategories ? (
+              <input
+                value={q}
+                onChange={(e) => { setOffset(0); setQ(e.target.value); }}
+                placeholder="Search title / handle…"
+                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #d6ccbd", fontSize: 13 }}
+              />
+            ) : null}
+            {isProducts ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "#5e574e" }}>
+                  Seller
+                  <select
+                    value={sellerId}
+                    onChange={(e) => { setOffset(0); setSellerId(e.target.value); }}
+                    style={filterSelectStyle}
+                  >
+                    <option value="">All sellers</option>
+                    {sellers.map((s) => (
+                      <option key={s.seller_id} value={s.seller_id}>
+                        {s.store_name || s.email || s.seller_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "#5e574e" }}>
+                  SEO status
+                  <select
+                    value={scoreFilter}
+                    onChange={(e) => { setOffset(0); setScoreFilter(e.target.value); }}
+                    style={filterSelectStyle}
+                  >
+                    {PRODUCT_SCORE_FILTERS.map((opt) => (
+                      <option key={opt.id || "all"} value={opt.id}>{opt.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#5e574e" }}>
+                  Category
+                  <div style={{ marginTop: 4 }}>
+                    <CategoryDrilldownSelect
+                      labelHidden
+                      label="Category"
+                      categories={categories}
+                      value={categoryId}
+                      onChange={(id) => { setOffset(0); setCategoryId(id || ""); }}
+                      placeholder="All categories"
+                      noneLabel="All categories"
+                    />
+                  </div>
+                </div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "#5e574e" }}>
+                  Sort
+                  <select
+                    value={sort}
+                    onChange={(e) => { setOffset(0); setSort(e.target.value); }}
+                    style={filterSelectStyle}
+                  >
+                    {PRODUCT_SORT_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>{opt.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : null}
+            <div style={{ fontSize: 12, color: "#a39a8d" }}>{total} items</div>
+          </div>
+          {loading ? (
+            <div style={{ padding: 24, textAlign: "center", color: "#a39a8d", fontSize: 13 }}>Loading…</div>
+          ) : isCategories ? (
+            <CategorySeoNav
+              items={items}
+              selectedId={selectedId}
+              onSelect={openEntity}
+              search={q}
+              onSearchChange={(v) => { setOffset(0); setQ(v); }}
+            />
+          ) : (
+          <div style={{ maxHeight: "70vh", overflow: "auto" }}>
+            {items.length === 0 ? (
+              <div style={{ padding: 24, textAlign: "center", color: "#a39a8d", fontSize: 13 }}>No items</div>
+            ) : (
+              items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => openEntity(item.id)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "12px 14px",
+                    border: "none",
+                    borderBottom: "1px solid #f1f5f9",
+                    background: selectedId === item.id ? "#faf7f2" : "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                    <div style={{ fontSize: 13, fontWeight: 650, color: "#1d1b18" }}>{item.label}</div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: SCORE_COLOR[item.score] || "#5e574e", textTransform: "uppercase" }}>
+                      {item.score === "needs_work" ? "warn" : item.score}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#a39a8d", marginTop: 3, fontFamily: "ui-monospace, monospace" }}>
+                    /{item.handle || "—"}
+                    {item.seller_label ? ` · ${item.seller_label}` : ""}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#5e574e", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {item.meta_title || item.label || "No meta title"}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+          )}
+          {!isCategories ? (
+            <div style={{ display: "flex", justifyContent: "space-between", padding: 10, borderTop: "1px solid #e6dfd4" }}>
+              <button type="button" disabled={offset <= 0} onClick={() => setOffset(Math.max(0, offset - limit))} style={{ fontSize: 12, cursor: offset <= 0 ? "default" : "pointer" }}>
+                ← Prev
+              </button>
+              <button type="button" disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)} style={{ fontSize: 12, cursor: offset + limit >= total ? "default" : "pointer" }}>
+                Next →
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {!entity ? (
+            <div style={{ background: "#fff", border: "1px solid #e6dfd4", borderRadius: 14, padding: 40, textAlign: "center", color: "#a39a8d", fontSize: 14 }}>
+              Select an item to edit SEO metadata and run analysis.
+            </div>
+          ) : (
+            <>
+              <div style={{ background: "#fff", border: "1px solid #e6dfd4", borderRadius: 14, padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "#a39a8d", textTransform: "uppercase" }}>{entity.type}</div>
+                    <h2 style={{ margin: "4px 0 0", fontSize: 18, color: "#1d1b18" }}>{entity.label}</h2>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {shopUrl ? (
+                      <a
+                        href={shopUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: 8,
+                          border: "1px solid #d6ccbd",
+                          background: "#fff",
+                          fontWeight: 650,
+                          fontSize: 13,
+                          textDecoration: "none",
+                          color: "#1d1b18",
+                        }}
+                      >
+                        Open in shop ↗
+                      </a>
+                    ) : null}
+                    {sellercentralUrl ? (
+                      <Link
+                        href={sellercentralUrl}
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: 8,
+                          border: "1px solid #d6ccbd",
+                          background: "#fff",
+                          fontWeight: 650,
+                          fontSize: 13,
+                          textDecoration: "none",
+                          color: "#1d1b18",
+                        }}
+                      >
+                        Open in Sellercentral
+                      </Link>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={save}
+                      disabled={saving}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        border: "none",
+                        background: "#1d1b18",
+                        color: "#fff",
+                        fontWeight: 650,
+                        fontSize: 13,
+                        cursor: saving ? "wait" : "pointer",
+                      }}
+                    >
+                      {saving ? "Saving…" : "Save SEO"}
+                    </button>
+                  </div>
+                </div>
+
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3a352f", marginBottom: 12 }}>
+                  Shop content language
+                  <select
+                    value={editLang}
+                    onChange={(e) => setEditLang(e.target.value)}
+                    style={{ display: "block", width: "100%", marginTop: 6, padding: "8px 10px", borderRadius: 8, border: "1px solid #d6ccbd", fontSize: 13 }}
+                  >
+                    {langOptions.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <span style={{ display: "block", marginTop: 6, fontWeight: 400, color: "#a39a8d" }}>
+                    DE = default columns. Other languages store translations (pages: meta_*_i18n, categories/products/collections: metadata.seo_i18n).
+                  </span>
+                </label>
+
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3a352f", marginBottom: 12 }}>
+                  URL slug / handle
+                  <input
+                    value={draft.handle}
+                    onChange={(e) => setDraft((d) => ({ ...d, handle: e.target.value.replace(/^\//, "") }))}
+                    style={{ display: "block", width: "100%", marginTop: 6, padding: "9px 11px", borderRadius: 8, border: "1px solid #d6ccbd", fontSize: 13, fontFamily: "ui-monospace, monospace" }}
+                  />
+                </label>
+
+                {type === "categories" ? (
+                  <div style={{ marginBottom: 12, padding: "8px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, fontSize: 12, color: "#92400e" }}>
+                    Ideal lengths: title <strong>50–65</strong>, description <strong>150–300</strong>. Missing title/description still blocks save; length is a warning.
+                  </div>
+                ) : null}
+
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3a352f", marginBottom: 12 }}>
+                  Meta title
+                  <input
+                    value={draft.meta_title}
+                    onChange={(e) => setDraft((d) => ({ ...d, meta_title: e.target.value }))}
+                    placeholder={editLang === "de" ? (entity.label || "") : (entity.meta_title || entity.label || "")}
+                    style={{ display: "block", width: "100%", marginTop: 6, padding: "9px 11px", borderRadius: 8, border: "1px solid #d6ccbd", fontSize: 13 }}
+                  />
+                </label>
+                <LengthBar
+                  label="Title length"
+                  value={draft.meta_title}
+                  idealMin={evalLive?.title?.idealMin || 50}
+                  idealMax={evalLive?.title?.idealMax || 65}
+                  status={evalLive?.title?.status}
+                />
+
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3a352f", marginBottom: 12 }}>
+                  Meta description
+                  <textarea
+                    value={draft.meta_description}
+                    onChange={(e) => setDraft((d) => ({ ...d, meta_description: e.target.value }))}
+                    rows={4}
+                    placeholder={editLang === "de" ? (seoPlainPreview(entity.content_html, 160) || "") : (entity.meta_description || seoPlainPreview(entity.content_html, 160) || "")}
+                    style={{ display: "block", width: "100%", marginTop: 6, padding: "9px 11px", borderRadius: 8, border: "1px solid #d6ccbd", fontSize: 13, resize: "vertical" }}
+                  />
+                </label>
+                <LengthBar
+                  label="Description length"
+                  value={draft.meta_description}
+                  idealMin={evalLive?.description?.idealMin || 150}
+                  idealMax={evalLive?.description?.idealMax || 300}
+                  status={evalLive?.description?.status}
+                />
+
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3a352f", marginBottom: 6 }}>
+                  Keywords {evalLive?.keywords?.status === "missing" ? <span style={{ color: "#b45309" }}>(recommended)</span> : <span style={{ color: "#15803d" }}>({evalLive?.keywords?.count || 0})</span>}
+                  <input
+                    value={draft.meta_keywords}
+                    onChange={(e) => setDraft((d) => ({ ...d, meta_keywords: e.target.value }))}
+                    placeholder={editLang === "de" ? "keyword1, keyword2, keyword3" : (entity.meta_keywords || "keyword1, keyword2, keyword3")}
+                    style={{ display: "block", width: "100%", marginTop: 6, padding: "9px 11px", borderRadius: 8, border: "1px solid #d6ccbd", fontSize: 13 }}
+                  />
+                </label>
+              </div>
+
+              <div style={{ background: "#fff", border: "1px solid #e6dfd4", borderRadius: 14, padding: 18 }}>
+                <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#1d1b18" }}>SEO Meta in 1 Click</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10, fontSize: 12, marginBottom: 14 }}>
+                  <div><div style={{ color: "#a39a8d", marginBottom: 2 }}>URL</div><div style={{ wordBreak: "break-all", color: "#1d1b18" }}>{entity.url || "—"}</div></div>
+                  <div><div style={{ color: "#a39a8d", marginBottom: 2 }}>Canonical</div><div style={{ wordBreak: "break-all", color: "#1d1b18" }}>{entity.canonical || "—"}</div></div>
+                  <div><div style={{ color: "#a39a8d", marginBottom: 2 }}>Robots</div><div style={{ color: "#1d1b18" }}>{entity.robots || "—"}</div></div>
+                  <div><div style={{ color: "#a39a8d", marginBottom: 2 }}>Lang</div><div style={{ color: "#1d1b18" }}>{entity.lang || "—"}</div></div>
+                  <div><div style={{ color: "#a39a8d", marginBottom: 2 }}>Author</div><div style={{ color: "#1d1b18" }}>{entity.author || "—"}</div></div>
+                  <div><div style={{ color: "#a39a8d", marginBottom: 2 }}>Publisher</div><div style={{ color: "#1d1b18" }}>{entity.publisher || "—"}</div></div>
+                </div>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                  <StatChip label="H1" value={headings.h1 || 0} warn={(headings.h1 || 0) !== 1} />
+                  <StatChip label="H2" value={headings.h2 || 0} />
+                  <StatChip label="H3" value={headings.h3 || 0} />
+                  <StatChip label="H4" value={headings.h4 || 0} />
+                  <StatChip label="H5" value={headings.h5 || 0} />
+                  <StatChip label="H6" value={headings.h6 || 0} />
+                  <StatChip label="Images" value={analysis.images || 0} warn={(analysis.imagesWithoutAlt || 0) > 0} />
+                  <StatChip label="No alt" value={analysis.imagesWithoutAlt || 0} warn={(analysis.imagesWithoutAlt || 0) > 0} />
+                  <StatChip label="Links" value={analysis.links || 0} />
+                </div>
+
+                <div style={{ marginBottom: 12, padding: "8px 10px", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, fontSize: 12, color: "#075985" }}>
+                  H1 counts include the storefront template title (category/product/page name). Raw CMS HTML alone often has 0 H1 because the heading is rendered by the React template.
+                </div>
+
+                {type === "products" && (headings.h1 || 0) > 1 ? (
+                  <div style={{ marginBottom: 12, padding: "8px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, color: "#991b1b" }}>
+                    Product description contains extra H1 tags. On save, description H1 tags are converted to H2.
+                  </div>
+                ) : null}
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <input
+                    value={liveUrl}
+                    onChange={(e) => setLiveUrl(e.target.value)}
+                    placeholder="https://… live URL to fetch & analyze"
+                    style={{ flex: 1, minWidth: 220, padding: "8px 10px", borderRadius: 8, border: "1px solid #d6ccbd", fontSize: 13 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={runAnalyze}
+                    disabled={analyzing}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      border: "1px solid #d6ccbd",
+                      background: "#faf7f2",
+                      fontWeight: 650,
+                      fontSize: 13,
+                      cursor: analyzing ? "wait" : "pointer",
+                    }}
+                  >
+                    {analyzing ? "Analyzing…" : "Analyze"}
+                  </button>
+                </div>
+
+                {liveResult ? (
+                  <div style={{ marginTop: 14, padding: 12, background: "#faf7f2", borderRadius: 10, border: "1px solid #e6dfd4", fontSize: 12 }}>
+                    {liveResult.error ? (
+                      <div style={{ color: "#b91c1c" }}>{liveResult.error}</div>
+                    ) : (
+                      <>
+                        <div style={{ fontWeight: 700, marginBottom: 8, color: "#1d1b18" }}>Live fetch ({liveResult.status}) — {liveResult.finalUrl}</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          <div><span style={{ color: "#a39a8d" }}>Title tag:</span> {liveResult.titleTag || "—"}</div>
+                          <div><span style={{ color: "#a39a8d" }}>Meta description:</span> {liveResult.metaDescription || "—"}</div>
+                          <div><span style={{ color: "#a39a8d" }}>Canonical:</span> {liveResult.canonical || "—"}</div>
+                          <div><span style={{ color: "#a39a8d" }}>Robots:</span> {liveResult.robots || "—"}</div>
+                          <div><span style={{ color: "#a39a8d" }}>Lang:</span> {liveResult.lang || "—"}</div>
+                          <div>
+                            <span style={{ color: "#a39a8d" }}>H1–H6:</span>{" "}
+                            {liveResult.analysis
+                              ? `H1:${liveResult.analysis.headings?.h1 || 0} H2:${liveResult.analysis.headings?.h2 || 0} H3:${liveResult.analysis.headings?.h3 || 0} · img:${liveResult.analysis.images || 0} · a:${liveResult.analysis.links || 0}`
+                              : "—"}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

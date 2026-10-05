@@ -1,0 +1,98 @@
+﻿import { headers } from "next/headers";
+import SeoJsonLd from "@/components/SeoJsonLd";
+import { absolutePublicUrl, buildBrandJsonLd, buildPageMetadata, marketFromHeader, stripHtml } from "@/lib/seo";
+
+const BASE = (
+  process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000"
+).replace(/\/$/, "");
+
+function siteDisplayName() {
+  const explicit = (process.env.NEXT_PUBLIC_SITE_NAME || "").trim();
+  if (explicit) return explicit;
+  const raw = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:9000").trim();
+  try {
+    const host = new URL(raw).hostname.replace(/^www\./i, "");
+    const seg = host.split(".")[0] || "";
+    if (seg) return seg.charAt(0).toUpperCase() + seg.slice(1).toLowerCase();
+  } catch {
+    /* ignore */
+  }
+  return "Trulo";
+}
+
+export async function generateMetadata({ params }) {
+  const { handle, locale } = await params;
+  const h = await headers();
+  const market = marketFromHeader(h.get("x-trulo-market-prefix"), locale);
+  const site = siteDisplayName();
+  const brandNameFallback = String(handle || "").replace(/-/g, " ");
+
+  if (!handle) {
+    return buildPageMetadata({
+      title: site,
+      market,
+      locale,
+      path: "brands",
+    });
+  }
+
+  try {
+    const res = await fetch(`${BASE}/store/brands/${encodeURIComponent(handle)}`, {
+      next: { revalidate: 120 },
+    });
+    const data = res.ok ? await res.json().catch(() => ({})) : {};
+    const brand = data?.brand || {};
+    const brandName = (brand.name || brandNameFallback).trim();
+    const title = `${brandName} | ${site}`;
+    const description =
+      stripHtml(brand.description || brand.about || "", 160) ||
+      `${brandName} products on ${site}`;
+    const images = [brand.logo_image, brand.banner_image].filter(Boolean);
+    return buildPageMetadata({
+      title: { absolute: title },
+      description,
+      market,
+      locale,
+      path: `brand/${brand.handle || handle}`,
+      images,
+    });
+  } catch {
+    const title = `${brandNameFallback} | ${site}`;
+    return buildPageMetadata({
+      title: { absolute: title },
+      market,
+      locale,
+      path: `brand/${handle}`,
+    });
+  }
+}
+
+export default async function BrandLayout({ children, params }) {
+  const { handle, locale } = await params;
+  const h = await headers();
+  const market = marketFromHeader(h.get("x-trulo-market-prefix"), locale);
+
+  let jsonLd = null;
+  if (handle) {
+    try {
+      const res = await fetch(`${BASE}/store/brands/${encodeURIComponent(handle)}`, {
+        next: { revalidate: 120 },
+      });
+      const data = res.ok ? await res.json().catch(() => ({})) : {};
+      const brand = data?.brand || null;
+      if (brand) {
+        const canonicalUrl = absolutePublicUrl(market, locale, `brand/${brand.handle || handle}`);
+        jsonLd = buildBrandJsonLd(brand, { locale, market, canonicalUrl });
+      }
+    } catch {
+      /* no JSON-LD for this request — metadata above already has a safe fallback */
+    }
+  }
+
+  return (
+    <>
+      <SeoJsonLd data={jsonLd} />
+      {children}
+    </>
+  );
+}

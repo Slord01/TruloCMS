@@ -1,0 +1,18 @@
+{
+  "buildCommand": "cd ../.. && npm install && turbo run build --filter=@trulo/shop",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "installCommand": "cd ../.. && npm install",
+  "regions": ["fra1"],
+  "rewrites": [
+    {
+      "source": "/admin/:path*",
+      "destination": "/admin/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    }
+  ]
+}
+

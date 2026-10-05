@@ -1,0 +1,99 @@
+"use client";
+
+import React from "react";
+import { useTranslations, useLocale } from "next-intl";
+import { getLocalizedCategory } from "@/lib/format";
+import { Link } from "@/i18n/navigation";
+import styled from "styled-components";
+import { motion } from "framer-motion";
+import { tokens } from "@/design-system/tokens";
+
+const Section = styled.section`
+  padding: ${tokens.sectionGap} ${tokens.containerPadding};
+  max-width: 1280px;
+  margin: 0 auto;
+`;
+
+const Title = styled.h2`
+  font-family: var(--h2-ff, ${tokens.fontFamily.sans});
+  font-size: var(--h2-fs, ${tokens.fontSize.h2});
+  font-weight: var(--h2-fw, 600);
+  font-style: var(--h2-style, normal);
+  color: var(--h2-color, ${tokens.dark[900]});
+  letter-spacing: var(--h2-ls, -0.01em);
+  line-height: var(--h2-lh, 1.2);
+  margin-bottom: ${tokens.spacing.xl};
+`;
+
+const Grid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: ${tokens.spacing.lg};
+`;
+
+const Card = styled(motion(Link))`
+  aspect-ratio: 1;
+  border-radius: ${tokens.radius.card};
+  border: 1px solid ${tokens.border.light};
+  overflow: hidden;
+  position: relative;
+  background: ${tokens.background.soft};
+  display: flex;
+  align-items: flex-end;
+  text-decoration: none;
+  color: white;
+
+  &:hover .overlay {
+    opacity: 0.85;
+  }
+`;
+
+const Overlay = styled.div`
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  opacity: 0;
+  transition: opacity ${tokens.transition.base};
+`;
+
+const Label = styled.span`
+  position: relative;
+  z-index: 1;
+  padding: ${tokens.spacing.md};
+  font-weight: 600;
+  font-size: ${tokens.fontSize.small};
+  font-family: ${tokens.fontFamily.sans};
+`;
+
+const PlaceholderBg = styled.div`
+  position: absolute;
+  inset: 0;
+  background: transparent;
+`;
+
+export default function CategoryShowcase({
+  title,
+  categories = [],
+}) {
+  const locale = useLocale();
+  const tCommon = useTranslations("common");
+  return (
+    <Section>
+      <Title>{title ?? tCommon("categories")}</Title>
+      <Grid>
+        {categories.slice(0, 6).map((cat, i) => (
+          <Card
+            key={cat.id || cat.slug || i}
+            href={cat.slug ? `/${cat.slug}` : cat.handle ? `/${cat.handle}` : "#"}
+            whileHover={{ scale: 1.03 }}
+            transition={{ duration: 0.2 }}
+          >
+            <PlaceholderBg />
+            <Overlay className="overlay" />
+            <Label>{cat.title || getLocalizedCategory(cat, locale).name || "Kategorie"}</Label>
+          </Card>
+        ))}
+      </Grid>
+    </Section>
+  );
+}

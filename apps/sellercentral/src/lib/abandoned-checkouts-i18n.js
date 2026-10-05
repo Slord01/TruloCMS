@@ -1,0 +1,50 @@
+import { lt } from "@/lib/locale-text";
+
+export function getAbandonedCheckoutsCopy(locale) {
+  const t = (en, tr, fr, es, it, de) => lt(locale, en, tr, fr, es, it, de);
+  return {
+    product: t("Product", "Urun", "Produit", "Producto", "Prodotto", "Produkt"),
+    qty: t("Qty", "Adet", "Qté", "Cant.", "Qta", "Menge"),
+    unitPrice: t("Unit price", "Birim fiyat", "Prix unitaire", "Precio unitario", "Prezzo unitario", "Einzelpreis"),
+    total: t("Total", "Toplam", "Total", "Total", "Totale", "Gesamt"),
+    noItems: t("No items", "Urun yok", "Aucun article", "Sin articulos", "Nessun articolo", "Keine Artikel"),
+    pageTitle: t("Abandoned Checkouts", "Yarim Kalan Siparisler", "Paniers abandonnes", "Carritos abandonados", "Checkout abbandonati", "Abgebrochene Checkouts"),
+    pageSubtitle: t(
+      "Carts that were not completed",
+      "Tamamlanmayan alisveris sepetleri",
+      "Paniers non finalises",
+      "Carritos no finalizados",
+      "Carrelli non completati",
+      "Warenkorbe, die nicht abgeschlossen wurden",
+    ),
+    carts: t("carts", "sepet", "paniers", "carritos", "carrelli", "Warenkorbe"),
+    customer: t("Customer", "Musteri", "Client", "Cliente", "Cliente", "Kunde"),
+    items: t("Items", "Urunler", "Articles", "Articulos", "Articoli", "Artikel"),
+    value: t("Value", "Deger", "Valeur", "Valor", "Valore", "Wert"),
+    created: t("Created", "Olusturuldu", "Cree", "Creado", "Creato", "Erstellt"),
+    lastActive: t("Last active", "Son aktiflik", "Derniere activite", "Ultima actividad", "Ultima attivita", "Zuletzt aktiv"),
+    noCheckouts: t("No abandoned checkouts", "Yarim kalan siparis yok", "Aucun checkout abandonne", "No hay checkouts abandonados", "Nessun checkout abbandonato", "Keine abgebrochenen Checkouts"),
+    itemCount: (count) => t(`${count} items`, `${count} urun`, `${count} articles`, `${count} articulos`, `${count} articoli`, `${count} Artikel`),
+    email: t("Email", "E-posta", "E-mail", "Correo", "E-mail", "E-Mail"),
+    status: t("Status", "Durum", "Statut", "Estado", "Stato", "Status"),
+    statusInCart: t("Still in cart", "Hala sepette", "Toujours dans le panier", "Todavia en el carrito", "Ancora nel carrello", "Noch im Warenkorb"),
+    statusPurchased: t("Purchased", "Satin alindi", "Achete", "Comprado", "Acquistato", "Gekauft"),
+    statusDeleted: t("Removed from cart", "Sepetten silindi", "Retire du panier", "Eliminado del carrito", "Rimosso dal carrello", "Aus Warenkorb entfernt"),
+    tabAll: t("All", "Tumu", "Tous", "Todos", "Tutti", "Alle"),
+    tabInCart: t("In cart", "Sepettekiler", "Dans le panier", "En el carrito", "Nel carrello", "Im Warenkorb"),
+    tabPurchased: t("Purchased", "Satin alinanlar", "Achetes", "Comprados", "Acquistati", "Gekauft"),
+    tabDeleted: t("Deleted", "Silinenler", "Supprimes", "Eliminados", "Eliminati", "Geloscht"),
+    markRemoved: t("Mark removed", "Sepetten cikarildi say", "Marquer retire", "Marcar eliminado", "Segna rimosso", "Als entfernt markieren"),
+    marking: t("Marking...", "Isaretleniyor...", "Marquage...", "Marcando...", "Contrassegnando...", "Markiere..."),
+    bulkMarkRemovedBtn: t("Mark all \"in cart\" as removed", "Sepettekilerin hepsini cikar", "Marquer tout comme retire", "Marcar todo como eliminado", "Segna tutti come rimossi", "Alle im Warenkorb als entfernt markieren"),
+    bulkMarking: t("Marking all...", "Hepsi isaretleniyor...", "Marquage en cours...", "Marcando todo...", "Contrassegnando tutti...", "Markiere alle..."),
+    bulkMarkConfirm: (n) => t(
+      `Mark all ${n} "still in cart" checkouts as removed from cart? They will stop receiving abandoned-cart emails.`,
+      `Hala sepette olan ${n} kaydin hepsi sepetten cikarildi olarak isaretlensin mi? Bundan sonra terkedilen sepet e-postasi almayacaklar.`,
+      `Marquer les ${n} paniers "encore dans le panier" comme retires ? Ils ne recevront plus d'e-mails de panier abandonne.`,
+      `Marcar los ${n} carritos "todavia en el carrito" como eliminados? Dejaran de recibir correos de carrito abandonado.`,
+      `Segnare tutti i ${n} carrelli "ancora nel carrello" come rimossi? Non riceveranno piu e-mail per carrello abbandonato.`,
+      `Alle ${n} Eintraege "noch im Warenkorb" als aus dem Warenkorb entfernt markieren? Sie erhalten danach keine Warenkorbabbruch-E-Mails mehr.`,
+    ),
+  };
+}

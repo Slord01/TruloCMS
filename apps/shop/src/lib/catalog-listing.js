@@ -1,0 +1,488 @@
+/**
+ * Shared facet / sort helpers for collection and category catalog pages.
+ */
+
+export const SORT_OPTIONS = [
+  { value: "default", label: "Featured" },
+  { value: "bestseller", label: "Bestseller" },
+  { value: "newest", label: "Newest" },
+  { value: "price_asc", label: "Price: Low → High" },
+  { value: "price_desc", label: "Price: High → Low" },
+  { value: "title_asc", label: "Name A–Z" },
+  { value: "title_desc", label: "Name Z–A" },
+];
+
+export const PER_PAGE = 24;
+
+/** Display titles for normalized facet keys (matches CategoryTemplate / brand listing). DE defaults. */
+const FACET_GROUP_TITLE_OVERRIDES = {
+  type: "Typ",
+  typ: "Typ",
+  farbe: "Farbe",
+  colour: "Colour",
+  color: "Color",
+  material: "Material",
+  size: "Größe",
+  groesse: "Größe",
+  style: "Style",
+  gender: "Gender",
+  age_group: "Altersgruppe",
+  season: "Saison",
+};
+
+/**
+ * Resolve metafield / facet group title for a locale.
+ * definitions: { [key]: { label, label_i18n?: { [loc]: { label } } } }
+ */
+export function getFacetGroupTitle(key, locale = "de", definitions = null) {
+  const k = String(key || "").trim();
+  const nk = normalizeFacetKey(k) || k;
+  const def = definitions && (definitions[nk] || definitions[k]);
+  if (def) {
+    const loc = String(locale || "de").slice(0, 2).toLowerCase();
+    if (loc && loc !== "de") {
+      const translated = def.label_i18n?.[loc]?.label;
+      if (translated != null && String(translated).trim()) return String(translated).trim();
+    }
+    if (def.label != null && String(def.label).trim()) return String(def.label).trim();
+  }
+  return FACET_GROUP_TITLE_OVERRIDES[nk] ?? FACET_GROUP_TITLE_OVERRIDES[k] ?? k.replace(/_/g, " ");
+}
+
+/** Walk /store/categories tree → Map(slug lower → display name). */
+export function buildCategorySlugToNameMap(tree) {
+  const m = new Map();
+  const walk = (nodes) => {
+    if (!Array.isArray(nodes)) return;
+    for (const n of nodes) {
+      if (!n) continue;
+      const slug = String(n.slug || "")
+        .replace(/^\//, "")
+        .trim()
+        .toLowerCase();
+      const name = String(n.name || n.title || "").trim();
+      if (slug && name) m.set(slug, name);
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(tree);
+  return m;
+}
+
+/** Flatten category tree → Map(id string → node). */
+export function buildCategoryIdMap(tree) {
+  const m = new Map();
+  const walk = (nodes) => {
+    if (!Array.isArray(nodes)) return;
+    for (const n of nodes) {
+      if (!n || n.id == null) continue;
+      m.set(String(n.id).trim(), n);
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(tree);
+  return m;
+}
+
+/** Unique category ids referenced by a product's metadata. */
+export function productCategoryIds(product) {
+  const ids = new Set();
+  const push = (value) => {
+    const id = String(value || "").trim();
+    if (id) ids.add(id);
+  };
+  const meta = product?.metadata && typeof product.metadata === "object" ? product.metadata : {};
+  push(meta.admin_category_id);
+  push(meta.category_id);
+  if (Array.isArray(meta.category_ids)) meta.category_ids.forEach(push);
+  return ids;
+}
+
+/**
+ * Categories that appear on the given product list, resolved against the category tree.
+ * Sorted by product count (desc), then name.
+ */
+export function deriveCategoriesFromProducts(products, categoryTree) {
+  const byId = buildCategoryIdMap(categoryTree);
+  const counts = new Map();
+  for (const product of products || []) {
+    for (const id of productCategoryIds(product)) {
+      if (!byId.has(id)) continue;
+      counts.set(id, (counts.get(id) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([id, count]) => {
+      const node = byId.get(id);
+      const name = String(node?.name || node?.title || node?.slug || "").trim();
+      if (!name) return null;
+      return {
+        id,
+        name,
+        slug: String(node?.slug || "").replace(/^\//, "").trim(),
+        count,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+/**
+ * Sidebar / chip label: category facet values show category name, not slug.
+ * Metafield values use catalog definitions (canonical value → locale label).
+ */
+export function formatFacetOptionLabel(facetKey, rawValue, categorySlugToName, locale = "de", definitions = null) {
+  const k = String(facetKey || "")
+    .trim()
+    .toLowerCase();
+  const raw = rawValue == null ? "" : String(rawValue);
+  if ((k === "category_slug" || k === "category") && categorySlugToName instanceof Map && categorySlugToName.size > 0) {
+    const slug = raw.replace(/^\//, "").trim().toLowerCase();
+    return categorySlugToName.get(slug) || rawValue;
+  }
+  const nk = normalizeFacetKey(facetKey);
+  const def = definitions && (definitions[nk] || definitions[facetKey]);
+  if (def && raw) {
+    const loc = String(locale || "de").slice(0, 2).toLowerCase();
+    if (loc && loc !== "de") {
+      const map = def.values_i18n?.[loc];
+      if (map && typeof map === "object") {
+        const hit = map[raw] ?? map[raw.trim()];
+        if (hit != null && String(hit).trim()) return String(hit).trim();
+      }
+    }
+  }
+  return rawValue;
+}
+
+export const FACET_SKIP = new Set([
+  "media", "image_url", "image", "thumbnail",
+  "review_count", "review_avg", "sold_last_month", "sold", "sales_count", "salescount",
+  "master_total_variants", "master_total_variant", "total_variants", "variant_count", "variants_count",
+  "rabattpreis_cents", "uvp_cents", "price_cents", "compare_at_price_cents", "sale_price_cents",
+  "is_new", "badge", "sale",
+  "ean", "sku",
+  "bullet_points", "translations", "variation_groups", "metafields",
+  "shipping_group_id",
+  "collection_id", "collection_ids", "admin_category_id", "category_id",
+  "seller_id", "product_id",
+  "brand", "brand_id", "brand_name", "brand_logo", "brand_handle",
+  "shop_name", "store_name", "seller_name",
+  "hersteller", "hersteller_information", "verantwortliche_person_information",
+  "seo_keywords", "seo_meta_title", "seo_meta_description",
+  "publish_date", "return_days", "return_cost", "return_kostenlos",
+  "related_product_ids",
+  "dimensions", "dimensions_length", "dimensions_width", "dimensions_height",
+  "weight", "weight_grams", "unit_type", "unit_value", "unit_reference",
+  "shipping_info", "versand",
+  "eu_origin_provider", "eu_origin_registry_id", "eu_origin_document_url",
+  "eu_origin_status", "eu_origin_verified_at", "eu_origin_country",
+  "wee_number", "wee", "weee", "weee_number", "eprel_number", "eprel", "eprel_id", "eprel_registration_number", "description",
+  "is_bestseller", "category_slug", "category", "category_ids", "prices",
+  "view_count", "views", "custom_badges",
+  "handle", "title", "status", "inventory", "price",
+  "sales_unit", "packaging_unit", "packaging_unit_plural", "minimum_order_quantity",
+  "manufacturer", "manufacturer_information", "responsible_person_information",
+  "product_files", "files", "bullet1", "bullet2", "bullet3", "bullet4", "bullet5",
+  "_catalog_approval_pending", "_pending_catalog_metafields",
+]);
+
+export function isProductSystemMetaKey(raw) {
+  const k = String(raw || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+  if (!k || k.startsWith("_")) return true;
+  if (FACET_SKIP.has(k)) return true;
+  if (k.endsWith("_id") || k.endsWith("_ids")) return true;
+  if (/(^|_)(weee?|eprel|bullet|hersteller|manufacturer|gpsr)(_|$)/i.test(k)) return true;
+  if (k.includes("bullet_point")) return true;
+  return false;
+}
+
+export function normalizeFacetKey(key) {
+  const raw = String(key || "").trim().toLowerCase().replace(/\s+/g, "_");
+  if (!raw) return "";
+  if (["farbe", "color", "colour", "farben"].includes(raw)) return "farbe";
+  if (["groesse", "größe", "size", "sizes"].includes(raw)) return "groesse";
+  if (["material", "materials", "stoff"].includes(raw)) return "material";
+  if (["sales_count", "salescount", "sold", "sold_count"].includes(raw)) return "sales_count";
+  if (["master_total_variants", "master_total_variant", "total_variants", "variant_count", "variants_count"].includes(raw)) {
+    return "master_total_variants";
+  }
+  return raw;
+}
+
+export function variationGroupFacetKey(group, fallbackIndex) {
+  const raw = group?.metafield_key || group?.key || group?.name || group?.title || `option_${fallbackIndex + 1}`;
+  return normalizeFacetKey(raw);
+}
+
+export function inferFacetKeyFromValue(value, fallbackKey = "") {
+  const s = String(value || "").trim();
+  const lower = s.toLowerCase();
+  if (!s) return normalizeFacetKey(fallbackKey);
+
+  const sizeTokens = new Set([
+    "xxs", "xs", "s", "m", "l", "xl", "xxl", "xxxl",
+    "2xs", "3xs", "2xl", "3xl", "4xl", "5xl",
+  ]);
+  const colorTokens = new Set([
+    "blue", "green", "pink", "red", "yellow", "orange", "purple", "violet",
+    "black", "white", "grey", "gray", "brown", "beige", "navy", "gold",
+    "silver", "rose", "rosa", "pinke", "pembe", "blau", "gruen", "grün",
+    "rot", "gelb", "orange", "lila", "schwarz", "weiss", "weiß", "grau",
+    "braun", "beige", "marine", "gold", "silber",
+  ]);
+
+  if (sizeTokens.has(lower)) return "groesse";
+  if (/^\d{1,3}$/.test(s)) return "groesse";
+  if (/^\d{1,3}([.,]\d+)?\s?(cm|mm|kg|g|ml|l|eu|us|uk)$/.test(lower)) return "groesse";
+  if (/^\d{2,3}\/\d{2,3}$/.test(s)) return "groesse";
+  if (colorTokens.has(lower)) return "farbe";
+
+  return normalizeFacetKey(fallbackKey);
+}
+
+export function getProductBasePriceCents(product) {
+  const firstVariantPrice = product?.variants?.[0]?.prices?.[0]?.amount;
+  if (firstVariantPrice != null) return Number(firstVariantPrice) || 0;
+  if (product?.price != null) return Math.round(Number(product.price) * 100) || 0;
+  return 0;
+}
+
+export function isDiscountedProduct(product, minPercent = 0) {
+  const minPct = Math.max(0, Math.min(99, Number(minPercent) || 0));
+  const meets = (base, sale) => {
+    if (base == null || sale == null || !(sale > 0) || !(base > 0) || sale >= base) return false;
+    if (minPct <= 0) return true;
+    return ((base - sale) / base) * 100 >= minPct;
+  };
+  const meta = product?.metadata || {};
+  const dePrice = meta.prices?.DE;
+  if (dePrice && meets(dePrice.brutto_cents != null ? Number(dePrice.brutto_cents) : null, dePrice.sale_cents != null ? Number(dePrice.sale_cents) : null)) return true;
+  const prices = meta.prices && typeof meta.prices === "object" ? meta.prices : {};
+  for (const entry of Object.values(prices)) {
+    if (!entry || typeof entry !== "object") continue;
+    if (meets(entry.brutto_cents != null ? Number(entry.brutto_cents) : null, entry.sale_cents != null ? Number(entry.sale_cents) : null)) return true;
+  }
+  const base = getProductBasePriceCents(product);
+  const sale = meta.rabattpreis_cents != null ? Number(meta.rabattpreis_cents) : null;
+  return meets(base, sale);
+}
+
+export const DEFAULT_BESTSELLER_MIN_SOLD = 1;
+export const DEFAULT_SALE_MIN_DISCOUNT_PERCENT = 0;
+
+export async function loadCatalogBadgeRules() {
+  try {
+    const res = await fetch("/api/store-seller-settings?seller_id=default", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    const minSold = Number(data?.bestseller_min_sold);
+    const salePct = Number(data?.sale_min_discount_percent);
+    return {
+      bestsellerMinSold: Number.isFinite(minSold) && minSold >= 1 ? Math.min(1000000, Math.round(minSold)) : DEFAULT_BESTSELLER_MIN_SOLD,
+      saleMinDiscountPercent: Number.isFinite(salePct) && salePct >= 0 ? Math.min(99, Math.round(salePct)) : DEFAULT_SALE_MIN_DISCOUNT_PERCENT,
+    };
+  } catch (_) {
+    return { bestsellerMinSold: DEFAULT_BESTSELLER_MIN_SOLD, saleMinDiscountPercent: DEFAULT_SALE_MIN_DISCOUNT_PERCENT };
+  }
+}
+
+export const DEFAULT_NEW_PRODUCT_WINDOW_DAYS = 15;
+
+/** Neu window from seller settings (Inventory, superuser). Falls back to 15 days. */
+export async function loadNewProductWindowDays() {
+  try {
+    const res = await fetch("/api/store-seller-settings?seller_id=default", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    const n = Number(data?.new_product_window_days);
+    if (Number.isFinite(n) && n >= 1) return Math.min(3650, Math.round(n));
+  } catch (_) {}
+  return DEFAULT_NEW_PRODUCT_WINDOW_DAYS;
+}
+
+/** True while publish_date (else created_at) is within `days`. Same rule as the Neu badge. */
+export function isWithinNewWindow(product, days = DEFAULT_NEW_PRODUCT_WINDOW_DAYS) {
+  const windowDays = Math.max(1, Math.min(3650, Number(days) || DEFAULT_NEW_PRODUCT_WINDOW_DAYS));
+  const raw = product?.metadata?.publish_date || product?.created_at;
+  if (!raw) return false;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return false;
+  const ageMs = Date.now() - d.getTime();
+  return ageMs >= 0 && ageMs <= windowDays * 24 * 60 * 60 * 1000;
+}
+
+export function isRecentProduct(product, months = 2) {
+  const now = new Date();
+  const threshold = new Date(now);
+  threshold.setMonth(threshold.getMonth() - months);
+  const candidates = [
+    product?.created_at,
+    product?.metadata?.publish_date,
+    product?.metadata?.created_at,
+    product?.updated_at,
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return d >= threshold;
+  }
+  return false;
+}
+
+export function productSalesScore(product) {
+  const meta = product?.metadata || {};
+  const score = Number(meta.sold_last_month || meta.sold || meta.sales_count || 0) || 0;
+  if (score > 0) return score;
+  if (meta.is_bestseller === true || meta.is_bestseller === "true" || String(meta.badge || "").toLowerCase().trim() === "bestseller") return 1;
+  return 0;
+}
+
+function isCleanValue(s) {
+  if (!s || s.length > 80) return false;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) return false;
+  if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("/uploads/")) return false;
+  return true;
+}
+
+function addFacetValue(f, key, rawVal) {
+  const normalizedKey = normalizeFacetKey(key);
+  if (!normalizedKey || normalizedKey.startsWith("_")) return;
+  if (normalizedKey !== "type" && normalizedKey !== "typ" && isProductSystemMetaKey(normalizedKey)) return;
+  const vals = Array.isArray(rawVal) ? rawVal : [rawVal];
+  vals.forEach((x) => {
+    if (x == null || typeof x === "object") return;
+    const s = String(x).trim();
+    if (!isCleanValue(s)) return;
+    if (!f[normalizedKey]) f[normalizedKey] = new Set();
+    f[normalizedKey].add(s);
+  });
+}
+
+export function catalogFacetKeySet(definitions) {
+  const s = new Set();
+  if (!definitions || typeof definitions !== "object") return s;
+  for (const k of Object.keys(definitions)) {
+    const nk = normalizeFacetKey(k);
+    if (nk && nk !== "type" && nk !== "typ" && isProductSystemMetaKey(nk)) continue;
+    if (nk) s.add(nk);
+    if (k) s.add(String(k).trim().toLowerCase());
+  }
+  return s;
+}
+
+/** Catalog Eigenschaften plus Type. Never dump product operational fields. */
+export function filterFacetsToCatalog(facets, definitions) {
+  const allowed = catalogFacetKeySet(definitions);
+  allowed.add("type");
+  allowed.add("typ");
+  return Object.fromEntries(
+    Object.entries(facets || {}).filter(([k]) => {
+      const nk = normalizeFacetKey(k);
+      if (nk === "type" || nk === "typ") return true;
+      if (isProductSystemMetaKey(nk)) return false;
+      if (allowed.size <= 2) return !isProductSystemMetaKey(nk);
+      return allowed.has(nk) || allowed.has(String(k || "").trim().toLowerCase());
+    }),
+  );
+}
+
+export function buildFacetsFromProducts(products) {
+  const f = {};
+  (products || []).forEach((p) => {
+    const meta = typeof p.metadata === "object" && p.metadata ? p.metadata : {};
+    const typeVal = p.type || meta.type;
+    if (typeVal != null && String(typeVal).trim()) addFacetValue(f, "type", typeVal);
+
+    if (Array.isArray(meta.metafields)) {
+      meta.metafields.forEach(({ key, value } = {}) => {
+        if (!key || value == null || value === "") return;
+        addFacetValue(f, key, value);
+      });
+    }
+
+    if (Array.isArray(p.variants)) {
+      p.variants.forEach((variant) => {
+        const variantMeta = typeof variant?.metadata === "object" && variant.metadata ? variant.metadata : {};
+        if (Array.isArray(variantMeta.metafields)) {
+          variantMeta.metafields.forEach(({ key, value } = {}) => {
+            if (!key || value == null || value === "") return;
+            addFacetValue(f, key, value);
+          });
+        }
+        if (Array.isArray(variant?.option_values)) {
+          const groups = Array.isArray(p.variation_groups) ? p.variation_groups : (Array.isArray(meta.variation_groups) ? meta.variation_groups : []);
+          variant.option_values.forEach((value, idx) => {
+            const groupKey = inferFacetKeyFromValue(value, variationGroupFacetKey(groups[idx], idx));
+            addFacetValue(f, groupKey, value);
+          });
+        }
+      });
+    }
+  });
+
+  return Object.fromEntries(
+    Object.entries(f)
+      .map(([k, s]) => [k, [...s].sort()])
+      .filter(([, v]) => v.length > 0 && v.length <= 50),
+  );
+}
+
+export function filterProductsByFacets(products, filters) {
+  let out = [...(products || [])];
+  Object.entries(filters || {}).forEach(([k, vals]) => {
+    if (!vals?.length) return;
+    out = out.filter((p) => {
+      const meta = p.metadata || {};
+      const normalizedKey = normalizeFacetKey(k);
+      if ((normalizedKey === "type" || k === "type" || k === "typ") && vals.includes(String(p.type || meta.type || "").trim())) return true;
+      const direct = meta[k];
+      if (direct != null && (Array.isArray(direct) ? direct : [direct]).some((x) => vals.includes(String(x).trim()))) return true;
+      const directNormalized = meta[normalizedKey];
+      if (directNormalized != null && (Array.isArray(directNormalized) ? directNormalized : [directNormalized]).some((x) => vals.includes(String(x).trim()))) return true;
+      if (Array.isArray(meta.metafields) && meta.metafields.some((mf) => mf?.key === k && vals.includes(String(mf.value ?? "").trim()))) return true;
+      if (Array.isArray(meta.metafields) && meta.metafields.some((mf) => normalizeFacetKey(mf?.key) === normalizedKey && vals.includes(String(mf.value ?? "").trim()))) return true;
+      if (Array.isArray(p.variants) && p.variants.some((v) => {
+        const variantMeta = typeof v?.metadata === "object" && v.metadata ? v.metadata : {};
+        const directVariant = variantMeta[k];
+        if (directVariant != null && (Array.isArray(directVariant) ? directVariant : [directVariant]).some((x) => vals.includes(String(x).trim()))) return true;
+        const directVariantNormalized = variantMeta[normalizedKey];
+        if (directVariantNormalized != null && (Array.isArray(directVariantNormalized) ? directVariantNormalized : [directVariantNormalized]).some((x) => vals.includes(String(x).trim()))) return true;
+        if (Array.isArray(variantMeta.metafields) && variantMeta.metafields.some((mf) => normalizeFacetKey(mf?.key) === normalizedKey && vals.includes(String(mf.value ?? "").trim()))) return true;
+        const ov = Array.isArray(v.option_values) ? v.option_values : [];
+        const groups = Array.isArray(p.variation_groups) ? p.variation_groups : [];
+        return ov.some((x, idx) => inferFacetKeyFromValue(x, variationGroupFacetKey(groups[idx], idx)) === normalizedKey && vals.includes(String(x).trim()));
+      })) return true;
+      return false;
+    });
+  });
+  return out;
+}
+
+export function applyCatalogSort(sorted, sort, { bestsellerOnly = false } = {}) {
+  const out = [...sorted];
+  if (sort === "bestseller" || (bestsellerOnly && sort === "default")) {
+    out.sort((a, b) => productSalesScore(b) - productSalesScore(a));
+  }
+  if (!sort || sort === "default") {
+    out.sort((a, b) => (productSalesScore(b) > 0 ? 1 : 0) - (productSalesScore(a) > 0 ? 1 : 0));
+  }
+  if (sort === "newest") {
+    out.sort((a, b) => {
+      const da = a.metadata?.publish_date ? new Date(a.metadata.publish_date).getTime() : (a.created_at ? new Date(a.created_at).getTime() : 0);
+      const db = b.metadata?.publish_date ? new Date(b.metadata.publish_date).getTime() : (b.created_at ? new Date(b.created_at).getTime() : 0);
+      return db - da;
+    });
+  }
+  if (sort === "price_asc") {
+    out.sort((a, b) => (a.variants?.[0]?.prices?.[0]?.amount ?? 0) - (b.variants?.[0]?.prices?.[0]?.amount ?? 0));
+  }
+  if (sort === "price_desc") {
+    out.sort((a, b) => (b.variants?.[0]?.prices?.[0]?.amount ?? 0) - (a.variants?.[0]?.prices?.[0]?.amount ?? 0));
+  }
+  if (sort === "title_asc") {
+    out.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  }
+  if (sort === "title_desc") {
+    out.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
+  }
+  return out;
+}

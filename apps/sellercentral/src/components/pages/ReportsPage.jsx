@@ -1,0 +1,107 @@
+﻿"use client";
+
+import React, { useState } from "react";
+import styled from "styled-components";
+import { useLocale } from "next-intl";
+import { lt } from "@/lib/locale-text";
+import { Card } from "@trulo/ui";
+
+const Container = styled.div`
+  max-width: 1200px;
+  margin: 0 auto;
+`;
+
+const Title = styled.h1`
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 32px;
+  color: #1d1b18;
+`;
+
+const Section = styled(Card)`
+  padding: 24px;
+  margin-bottom: 24px;
+`;
+
+export default function ReportsPage() {
+  const locale = useLocale();
+  const t = (en, tr, fr, es, it, de) => lt(locale, en, tr, fr, es, it, de);
+  const [exporting, setExporting] = useState("");
+
+  const runExport = async (format) => {
+    try {
+      setExporting(format);
+      const token = typeof window !== "undefined" ? localStorage.getItem("sellerToken") : null;
+      if (!token) {
+        alert(t("Please login again.", "Lutfen tekrar giris yapin.", "Veuillez vous reconnecter.", "Inicia sesion de nuevo.", "Accedi di nuovo.", "Bitte erneut einloggen."));
+        return;
+      }
+      const response = await fetch("/api/import-export/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sellerToken: token,
+          datasets: ["orders", "customers", "transactions"],
+          format,
+        }),
+      });
+      if (!response.ok) throw new Error(`${t("Export failed", "Disa aktarma basarisiz", "Export echoue", "Exportacion fallida", "Esportazione non riuscita", "Export fehlgeschlagen")} (${response.status})`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `reports-export.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(e?.message || t("Export failed", "Disa aktarma basarisiz", "Export echoue", "Exportacion fallida", "Esportazione non riuscita", "Export fehlgeschlagen"));
+    } finally {
+      setExporting("");
+    }
+  };
+
+  return (
+    <Container>
+      <Title>{t("Reports", "Raporlar", "Rapports", "Informes", "Report", "Berichte")}</Title>
+      <Section>
+        <h2>{t("Generate and download reports", "Rapor olustur ve indir", "Generer et telecharger des rapports", "Generar y descargar informes", "Genera e scarica report", "Berichte erstellen und herunterladen")}</h2>
+        <p>{t("Sales reports, tax reports, and more.", "Satis raporlari, vergi raporlari ve daha fazlasi.", "Rapports de ventes, fiscaux et plus.", "Informes de ventas, impuestos y mas.", "Report vendite, fiscali e altro.", "Verkaufsberichte, Steuerberichte und mehr.")}</p>
+        <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+          <button
+            onClick={() => runExport("xlsx")}
+            disabled={exporting !== ""}
+            style={{
+              padding: "12px 20px",
+              backgroundColor: "#ee8a12",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            {exporting === "xlsx" ? t("Exporting...", "Aktariliyor...", "Export en cours...", "Exportando...", "Esportazione...", "Exportiere...") : "Export XLSX"}
+          </button>
+          <button
+            onClick={() => runExport("csv")}
+            disabled={exporting !== ""}
+            style={{
+              padding: "12px 20px",
+              backgroundColor: "#fff",
+              color: "#ee8a12",
+              border: "2px solid #ee8a12",
+              borderRadius: 8,
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            {exporting === "csv" ? t("Exporting...", "Aktariliyor...", "Export en cours...", "Exportando...", "Esportazione...", "Exportiere...") : "Export CSV"}
+          </button>
+        </div>
+      </Section>
+    </Container>
+  );
+}
+

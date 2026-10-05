@@ -1,0 +1,14 @@
+{
+  "name": "@trulo/cms-backend",
+  "version": "1.0.0",
+  "private": true,
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "dev": "node --watch server.cjs",
+    "start": "node server.cjs",
+    "build": "node --check server.cjs",
+    "typecheck": "node --check server.cjs",
+    "test": "node --test test/*.test.cjs",
+    "create-superuser": "node create-superuser.cjs"
+  }
+}

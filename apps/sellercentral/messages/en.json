@@ -1,0 +1,816 @@
+{
+  "common": {
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "add": "Add",
+    "remove": "Remove",
+    "upload": "Upload",
+    "duplicate": "Duplicate",
+    "loading": "Loading…",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "back": "Back",
+    "close": "Close",
+    "confirm": "Confirm",
+    "required": "Required",
+    "optional": "Optional",
+    "yes": "Yes",
+    "no": "No",
+    "error": "Error",
+    "success": "Success",
+    "actions": "Actions",
+    "view": "View",
+    "list": "List",
+    "free": "Free",
+    "noItems": "No items",
+    "all": "All",
+    "new": "New",
+    "dashboard": "Dashboard",
+    "products": "Products",
+    "orders": "Orders",
+    "settings": "Settings",
+    "logout": "Log out",
+    "productStatus": {
+      "published": "Active",
+      "draft": "Draft",
+      "archived": "Archived"
+    },
+    "orderStatus": {
+      "pending": "Open",
+      "processing": "Processing",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "paid": "Paid",
+      "refunded": "Refunded",
+      "teil_erstattet": "Partially Refunded",
+      "retoure": "Return",
+      "retoure_anfrage": "Return Pending"
+    },
+    "approvalStatus": {
+      "pending": "Pending",
+      "pending_review": "Under Review",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "suspended": "Suspended",
+      "documents_submitted": "Docs Submitted"
+    }
+  },
+  "nav": {
+    "home": "Home",
+    "dashboard": "Dashboard",
+    "products": "Products",
+    "orders": "Orders",
+    "content": "Content",
+    "marketing": "Marketing",
+    "settings": "Settings",
+    "help": "Help & Guides",
+    "language": "Language",
+    "drafts": "Drafts",
+    "abandonedCheckouts": "Abandoned checkouts",
+    "returns": "Returns",
+    "inventory": "Inventory",
+    "collections": "Collections",
+    "giftCards": "Gift Cards",
+    "customers": "Customers",
+    "customersList": "List",
+    "campaigns": "Campaigns",
+    "attribution": "Attribution",
+    "automations": "Automations",
+    "seo": "SEO",
+    "discounts": "Discounts",
+    "metaobjects": "Metaobjects",
+    "categories": "Categories",
+    "media": "Media",
+    "pages": "Pages",
+    "files": "Files",
+    "menus": "Menus",
+    "blogPosts": "Blog Posts",
+    "brands": "Brands",
+    "analytics": "Analytics",
+    "reports": "Reports",
+    "reportsSubtitle": "Sales, orders, and customer trends",
+    "reportsSubtitleAllSellers": "Sales, orders, and customer trends (all sellers)",
+    "ranking": "Ranking",
+    "sellerHealth": "Seller Health",
+    "liveView": "Live View",
+    "importExport": "Import/Export",
+    "view": "View",
+    "list": "List",
+    "reviews": "Reviews",
+    "sellers": "Sellers",
+    "coupons": "Coupons",
+    "promotions": "Promotions",
+    "landingPage": "Landing Page",
+    "styles": "Styles",
+    "flows": "Flows",
+    "newsletter": "Newsletter",
+    "productGroups": "Product groups",
+    "issueLog": "Issue log",
+    "transactions": "Transactions",
+    "appStore": "App Store",
+    "installed": "Installed",
+    "complianceReview": "Compliance review",
+    "complianceProfiles": "Compliance profiles",
+    "affiliateMarketing": "Affiliate",
+    "affiliateAdmin": "Affiliate admin"
+  },
+  "rankingPage": {
+    "title": "Product ranking in the shop",
+    "subtitle": "Order of your products in categories, search, and special sections (e.g. new arrivals, bestsellers, sale).",
+    "whatIsTitle": "What is this page for?",
+    "whatIsBody": "The marketplace must constantly decide which products appear at the top of lists and which appear lower. A ranking algorithm collects measurable signals (sales, clicks, product age, content, discount, seller rating, trend, etc.) and turns them into a score. Under Current placements you can see how your products rank for the selected strategy. Details opens the breakdown. Under Sorting rules you can adjust factor weights when your account allows it (weights must sum to 1.00) — per strategy, e.g. search vs. homepage.",
+    "flowTitle": "How shop sorting works",
+    "flow1Title": "1. Signals & score",
+    "flow1Text": "The system evaluates sales, clicks, listing age, content quality, discount, momentum, and more. That yields a final score per product and strategy.",
+    "flow2Title": "2. Strategies",
+    "flow2Text": "Not every page sorts the same: search and homepage use different profiles. Pick a strategy below to see which rules apply there.",
+    "flow3Title": "3. What you can do here",
+    "flow3Text": "Current placements shows the computed order. Details opens per-product analysis. Sorting rules edits weights for users with access. Recalculate now (some admins only) runs the job early; normally it runs about every 2 hours.",
+    "tabPlacements": "Current placements",
+    "tabRules": "Sorting rules (weights)",
+    "strategyLabel": "Strategy (shop context)",
+    "strategyHelp": "The product order changes by context. Choose which logic you want to inspect — edit the matching weights under Sorting rules.",
+    "strategyDefault": "Default",
+    "strategyDefaultDesc": "General listings, e.g. homepage and many collections — balance of popularity, freshness, content, etc.",
+    "strategyNeuheiten": "New arrivals",
+    "strategyNeuheitenDesc": "Stronger emphasis on freshness and discovery so new items get visibility (less pure bestseller bias).",
+    "strategyBestsellers": "Bestsellers",
+    "strategyBestsellersDesc": "Focus on proven demand: sales, revenue, and click signals weigh more.",
+    "strategySales": "Sale / offers",
+    "strategySalesDesc": "Discount and offer quality weigh more — useful for sale sections and campaigns.",
+    "strategySearch": "Search",
+    "strategySearchDesc": "Sorting after search pre-selection; this is the re-ranking layer using the same score building blocks.",
+    "load": "Refresh",
+    "productCount": "{count} products in this view",
+    "refreshNote": "Automatic recompute about every 2 hours.",
+    "searchPlaceholder": "Search product (title, handle, ID)…",
+    "tableRank": "#",
+    "tableProduct": "Product",
+    "tablePop": "Popularity",
+    "tableFresh": "Freshness",
+    "tableVelo": "Trend",
+    "tableContent": "Content",
+    "tableDisc": "Disc.",
+    "tableReview": "Review",
+    "tableScore": "Score",
+    "tableAction": "Action",
+    "btnDetails": "Details",
+    "btnProduct": "Open product",
+    "emptyTable": "No products in this strategy. Load again after the next run or ask an admin to trigger recalculation.",
+    "configBanner": "These values control how strongly each factor affects the final score. All weights must sum to 1.00. Changes apply after the next feature recomputation.",
+    "weightsTitle": "Weights (sum = 1.0)",
+    "paramsTitle": "Extra parameters",
+    "save": "Save",
+    "compute": "Recalculate ranking now",
+    "computing": "Running…",
+    "superuserOnly": "Platform admins only: runs the global recomputation early (otherwise about every 2h automatically).",
+    "errWeightSum": "Weight sum must be 1.00 (current: {sum})",
+    "successCompute": "Recomputation started. Refresh results in about 30 seconds.",
+    "successSave": "Configuration saved.",
+    "errorGeneric": "Error"
+  },
+  "locale": {
+    "en": "English",
+    "de": "Deutsch",
+    "tr": "Türkçe",
+    "fr": "Français",
+    "it": "Italiano",
+    "es": "Español"
+  },
+  "auth": {
+    "login": {
+      "title": "Seller Login",
+      "subtitle": "Sign in to your seller account",
+      "email": "Email",
+      "emailPlaceholder": "you@example.com",
+      "password": "Password",
+      "passwordPlaceholder": "••••••••",
+      "submit": "Sign In",
+      "submitting": "Signing in…",
+      "noAccount": "Don't have an account? Register here",
+      "errorRequired": "Email and password are required",
+      "errorFailed": "Login failed. Check your email and password.",
+      "twoFactorTitle": "Enter your security code",
+      "twoFactorSubtitle": "Open your authenticator app (e.g. Google Authenticator) and enter the current 6-digit code.",
+      "totpCode": "6-digit code",
+      "totpCodeRequired": "Please enter the 6-digit code.",
+      "totpVerifying": "Verifying code…",
+      "totpConfirm": "Sign in",
+      "totpBack": "← Back to login",
+      "totpInvalid": "Invalid or expired code. Please try again."
+    },
+    "register": {
+      "title": "Become a Seller",
+      "titleInvited": "Accept Invitation",
+      "subtitle": "Register now and start selling",
+      "subtitleInvited": "Create your account",
+      "firstName": "First name",
+      "firstNamePlaceholder": "Max",
+      "lastName": "Last name",
+      "lastNamePlaceholder": "Smith",
+      "storeName": "Store name",
+      "storeNamePlaceholder": "My Awesome Store",
+      "email": "Email",
+      "emailPlaceholder": "you@example.com",
+      "password": "Password",
+      "passwordPlaceholder": "Min. 6 characters",
+      "agreeText": "I have read and accept the <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
+      "terms": "Terms of Service",
+      "privacy": "Privacy Policy",
+      "submit": "Create Seller Account",
+      "submitInvited": "Create Account",
+      "submitting": "Creating account…",
+      "alreadyHaveAccount": "Already registered? Sign in",
+      "success": "Account created! Redirecting…",
+      "errorRequired": "Email and password are required",
+      "errorStoreName": "Store name is required",
+      "errorName": "First and last name are required",
+      "errorPasswordLength": "Password must be at least 8 characters and contain a letter and a number",
+      "errorTerms": "Please accept the Terms of Service and Privacy Policy.",
+      "errorFailed": "Registration failed. Please try again."
+    }
+  },
+  "orders": {
+    "title": "Orders",
+    "newOrder": "New Order",
+    "searchPlaceholder": "Search by name, email, #...",
+    "sellerSearchPlaceholder": "Search seller (name)…",
+    "return": "Return (active)",
+    "loading": "Loading…",
+    "empty": "No orders found",
+    "sort": {
+      "label": "Sort",
+      "newest": "Newest first",
+      "oldest": "Oldest first",
+      "amountDesc": "Amount ↓",
+      "amountAsc": "Amount ↑"
+    },
+    "table": {
+      "order": "Order",
+      "customer": "Customer",
+      "date": "Date",
+      "items": "Items",
+      "total": "Total",
+      "status": "Status",
+      "payment": "Payment",
+      "delivery": "Delivery"
+    },
+    "actions": {
+      "viewDetails": "View Details",
+      "ship": "Ship",
+      "cancel": "Cancel",
+      "delete": "Delete"
+    },
+    "new": {
+      "title": "New Order",
+      "customerData": "Customer data",
+      "email": "Email *",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "phone": "Phone",
+      "country": "Country",
+      "street": "Street",
+      "postalCode": "Postal code",
+      "city": "City",
+      "items": "Items",
+      "itemDescription": "Description",
+      "itemQty": "Qty",
+      "itemPrice": "Price (cents)",
+      "addItem": "Add item",
+      "shipping": "Shipping (cents)",
+      "discount": "Discount (cents)",
+      "paymentMethod": "Payment method",
+      "paymentMethodPlaceholder": "Bank transfer, PayPal…",
+      "notes": "Notes",
+      "create": "Create order"
+    },
+    "detail": {
+      "back": "← Orders",
+      "orderPrefix": "Order #",
+      "sections": {
+        "items": "Items",
+        "statusManagement": "Status Management",
+        "shipping": "Shipping",
+        "paymentInfo": "Payment Info",
+        "customerInfo": "Customer Info",
+        "shippingAddress": "Shipping Address",
+        "billingAddress": "Billing Address",
+        "summary": "Summary",
+        "deleteOrder": "Delete Order"
+      },
+      "table": {
+        "product": "Product",
+        "qty": "Qty",
+        "unitPrice": "Unit Price",
+        "total": "Total"
+      },
+      "fields": {
+        "orderStatus": "Order Status",
+        "paymentStatus": "Payment Status",
+        "deliveryStatus": "Delivery Status",
+        "carrier": "Carrier",
+        "trackingNumber": "Tracking Number",
+        "shippedDate": "Shipped Date",
+        "paymentMethod": "Payment Method",
+        "customerType": "Customer Type",
+        "firstOrder": "First Order",
+        "newsletter": "Newsletter",
+        "orderNumber": "Order Number",
+        "date": "Date"
+      },
+      "customerTypes": {
+        "guest": "Guest Customer",
+        "registered": "Registered Customer"
+      },
+      "sameAsShipping": "same as shipping address",
+      "buttons": {
+        "saveStatus": "Save Status",
+        "editShipping": "Edit Shipping / Mark as Shipped",
+        "invoice": "Invoice (PDF)",
+        "packingSlip": "Packing Slip (PDF)",
+        "deleteOrder": "Delete Order",
+        "saved": "✓ Saved"
+      },
+      "costBreakdown": {
+        "shippingCosts": "Shipping costs",
+        "discount": "Discount",
+        "subtotal": "Subtotal (gross)",
+        "total": "Total"
+      },
+      "messages": {
+        "loadError": "Order could not be loaded",
+        "saveFailed": "Save failed",
+        "deleteConfirm": "Really delete order?",
+        "deleteFailed": "Delete failed",
+        "undoWarning": "This action cannot be undone.",
+        "loading": "Loading…",
+        "noItems": "No items"
+      }
+    }
+  },
+  "products": {
+    "title": "Products",
+    "newProduct": "New Product",
+    "searchPlaceholder": "Search products…",
+    "loading": "Loading…",
+    "empty": "No products found",
+    "sort": {
+      "nameAsc": "Name A–Z",
+      "nameDesc": "Name Z–A",
+      "newest": "Newest first",
+      "oldest": "Oldest first"
+    },
+    "table": {
+      "product": "Product",
+      "sku": "SKU",
+      "category": "Category",
+      "price": "Price",
+      "inventory": "Inventory",
+      "status": "Status",
+      "seller": "Seller"
+    },
+    "actions": {
+      "edit": "Edit",
+      "duplicate": "Duplicate",
+      "delete": "Delete"
+    },
+    "edit": {
+      "back": "← Products",
+      "newTitle": "New Product",
+      "editTitle": "Edit Product",
+      "sections": {
+        "basicInfo": "Basic information",
+        "description": "Description",
+        "media": "Media",
+        "pricing": "Pricing",
+        "inventory": "Inventory",
+        "variants": "Variants",
+        "metadata": "Metadata",
+        "seo": "SEO",
+        "shipping": "Shipping & Dimensions",
+        "productType": "Product Type",
+        "relatedProducts": "Related Products"
+      },
+      "fields": {
+        "title": "Title",
+        "titlePlaceholder": "e.g. Cotton T-Shirt",
+        "sku": "SKU",
+        "ean": "EAN / Barcode",
+        "category": "Category",
+        "categoryPlaceholder": "Select category",
+        "brand": "Brand",
+        "noBrand": "— None —",
+        "shippingGroup": "Shipping group",
+        "collections": "Collections",
+        "collectionsPlaceholder": "Search collections…",
+        "status": "Status",
+        "metaTitle": "Meta title",
+        "metaDescription": "Meta description",
+        "keywords": "Keywords",
+        "keywordsPlaceholder": "keyword1, keyword2",
+        "urlHandle": "URL handle",
+        "syncHandle": "Sync title → handle",
+        "weight": "Weight (g)",
+        "length": "L (cm)",
+        "width": "W (cm)",
+        "height": "H (cm)",
+        "productType": "Product type",
+        "productTypePlaceholder": "e.g. T-Shirt",
+        "manufacturer": "Manufacturer",
+        "manufacturerInfo": "Manufacturer information",
+        "responsiblePerson": "Responsible Person (EU)",
+        "searchOrEnter": "Search or enter…",
+        "relatedSearch": "Search products…",
+        "quantity": "Quantity"
+      },
+      "pricing": {
+        "net": "Net",
+        "gross": "Gross (incl. {taxLabel} {vatRate}%)",
+        "rrp": "RRP",
+        "sale": "Sale",
+        "linkNetGross": "Link net and gross",
+        "unlinkNetGross": "Unlink net and gross"
+      },
+      "variants": {
+        "groupName": "Group name",
+        "groupNamePlaceholder": "e.g. Color, Size, Material",
+        "value": "Value",
+        "swatch": "Swatch",
+        "addSwatchImage": "Add swatch image",
+        "changeSwatchImage": "Change swatch image",
+        "removeOption": "Remove option",
+        "removeSwatch": "Remove swatch",
+        "price": "Price (€)",
+        "rrp": "RRP (€)",
+        "sale": "Sale (€)"
+      },
+      "description": {
+        "visualToggle": "Show visual",
+        "htmlToggle": "Show HTML"
+      },
+      "media": {
+        "addImage": "Add image",
+        "selectImage": "Select image"
+      },
+      "units": {
+        "none": "— None —",
+        "piece": "Piece"
+      },
+      "duplicate": {
+        "title": "Duplicate product",
+        "create": "Create duplicate",
+        "cancel": "Cancel",
+        "fields": {
+          "title": "Title (with \"(Copy)\" suffix)",
+          "description": "Description",
+          "price": "Price",
+          "inventory": "Inventory quantity",
+          "categories": "Categories / collection",
+          "images": "Images / media",
+          "variants": "Variants (option names and values; SKU/EAN never copied)"
+        }
+      },
+      "messages": {
+        "created": "Product created",
+        "saved": "Saved",
+        "proposalSubmitted": "Your change proposal has been submitted. A superuser will review it.",
+        "priceStockSaved": "Price, stock, and custom data saved.",
+        "saveFailed": "Save failed",
+        "duplicateFailed": "Duplicate failed",
+        "deleteFailed": "Delete failed",
+        "variantEanRequired": "Variant EAN cannot be empty.",
+        "gpsr": "GPSR is mandatory. Please fill in the following fields: {fields}"
+      }
+    }
+  },
+  "inventory": {
+    "title": "Inventory",
+    "searchPlaceholder": "Search products…",
+    "loading": "Loading…",
+    "empty": "No products found",
+    "sort": {
+      "nameAsc": "Name A–Z",
+      "nameDesc": "Name Z–A",
+      "newest": "Newest first",
+      "oldest": "Oldest first"
+    },
+    "table": {
+      "product": "Product",
+      "sku": "SKU",
+      "available": "Available",
+      "reserved": "Reserved",
+      "total": "Total"
+    }
+  },
+  "customers": {
+    "title": "Customers",
+    "newCustomer": "New Customer",
+    "searchPlaceholder": "Search by name, email or #…",
+    "sellerSearchPlaceholder": "Search seller (name)…",
+    "loading": "Loading…",
+    "empty": "No customers found",
+    "emptyArea": "No customers in this area.",
+    "emptySellerCustomers": "No seller customers",
+    "superuserArea": "Your Superuser Area — direct & unassigned customers",
+    "sellerCustomers": "Seller Customers",
+    "allCustomers": "All Customers",
+    "count": "{count} customer",
+    "countPlural": "{count} customers",
+    "table": {
+      "number": "Customer #",
+      "name": "Name",
+      "email": "Email",
+      "type": "Type",
+      "registered": "Registered",
+      "newsletter": "Newsletter",
+      "country": "Country",
+      "orders": "Orders",
+      "totalSpent": "Total spent",
+      "lastPurchase": "Last purchase"
+    },
+    "accountTypes": {
+      "guest": "Guest",
+      "business": "Business",
+      "private": "Private"
+    },
+    "subscribed": "✓ Subscribed",
+    "registered": "Registered",
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "deleteConfirm": {
+      "title": "Delete customer?",
+      "body": "will be permanently deleted.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "general": {
+      "title": "General Settings",
+      "subtitle": "Store name and contact. Store name is shown as Seller on product pages in the shop.",
+      "sections": {
+        "language": "Language",
+        "languageHint": "Interface language for Sellercentral. Product data can be entered in any language.",
+        "storeInfo": "Store Information",
+        "address": "Address",
+        "companyDetails": "Company details & documents",
+        "registeredAddress": "Registered business address",
+        "warehouseAddress": "Warehouse / return address",
+        "documents": "Company documents",
+        "documentsHint": "Upload trade license, tax certificate, registration documents, etc."
+      },
+      "fields": {
+        "storeName": "Store name",
+        "storeNamePlaceholder": "e.g. My Shop",
+        "email": "Email",
+        "emailPlaceholder": "you@example.com",
+        "phone": "Phone",
+        "phonePlaceholder": "+1 …",
+        "city": "City",
+        "postalCode": "Postal code",
+        "country": "Country",
+        "description": "Store description",
+        "descriptionPlaceholder": "Tell us about your store…",
+        "companyName": "Company legal name",
+        "taxId": "Tax ID",
+        "vatId": "VAT ID",
+        "iban": "IBAN (optional)",
+        "website": "Website",
+        "websitePlaceholder": "https://...",
+        "street": "Street",
+        "streetPlaceholder": "Street and number"
+      },
+      "buttons": {
+        "save": "Save",
+        "cancel": "Cancel",
+        "remove": "Remove",
+        "uploading": "Uploading documents…"
+      },
+      "messages": {
+        "saved": "Settings saved successfully.",
+        "loading": "Loading…"
+      }
+    },
+    "payments": {
+      "title": "Payments & Payouts",
+      "subtitle": "Add your bank account to receive sales revenue.",
+      "howItWorks": {
+        "title": "How payouts work",
+        "step1Label": "Customer buys",
+        "step1Desc": "Payment goes directly to the platform (Stripe)",
+        "step2Label": "Settlement",
+        "step2Desc": "{sellerPct}% of your revenue is calculated — {platformPct}% platform fee",
+        "step3Label": "SEPA payout",
+        "step3Desc": "After the hold period, your balance is paid automatically via SEPA to the IBAN saved here (2nd and 4th Friday each month, Europe/Berlin).",
+        "note": "Use an IBAN that accepts SEPA transfers (typically EU/EEA). Payouts run automatically through Stripe to your saved bank details."
+      },
+      "bankAccount": {
+        "title": "Payout bank account",
+        "subtitle": "Your sales revenue will be transferred to this account.",
+        "addButton": "Add",
+        "editButton": "Edit",
+        "ibanLabel": "IBAN",
+        "holderLabel": "Account holder",
+        "bicLabel": "BIC / SWIFT",
+        "bankNameLabel": "Bank",
+        "ibanPlaceholder": "DE89 3704 0044 0532 0130 00",
+        "holderPlaceholder": "John Smith or Smith LLC",
+        "bicPlaceholder": "COBADEFFXXX",
+        "bankNamePlaceholder": "Commerzbank AG",
+        "ibanHelp": "IBAN for SEPA payouts (EU/EEA typical). Format and checksum are validated when you save.",
+        "saveButton": "Save bank details",
+        "cancelButton": "Cancel",
+        "accountReady": "Bank account added — ready for payouts",
+        "noAccount": "No bank account added",
+        "noAccountDesc": "Without an IBAN, no payouts can be processed. Please add your bank account."
+      },
+      "history": {
+        "title": "Payout history",
+        "empty": "No payouts yet.",
+        "emptyHint": "Once a transfer is made, it will appear here with date, amount, and reference."
+      },
+      "validation": {
+        "ibanEmpty": "IBAN cannot be empty.",
+        "ibanFormat": "Invalid IBAN format (e.g. DE89 3704 0044 0532 0130 00).",
+        "ibanLength": "Invalid IBAN length."
+      },
+      "messages": {
+        "saved": "Bank details saved successfully.",
+        "loadError": "Error loading payment data.",
+        "saveError": "Error saving.",
+        "loading": "Loading…"
+      }
+    },
+    "verification": {
+      "title": "Seller Verification",
+      "subtitle": "Complete legal confirmation and company documents before you can start selling.",
+      "statusLabel": "Verification Status",
+      "statuses": {
+        "pending": "Registered — verification required before selling",
+        "documents_submitted": "Documents submitted — review in progress",
+        "pending_review": "Pending approval",
+        "approved": "Account verified — selling enabled",
+        "rejected": "Rejected — please contact support",
+        "suspended": "Suspended — please contact support"
+      },
+      "sections": {
+        "agreement": "Legal Confirmation",
+        "company": "Company Details",
+        "contact": "Contact & Address",
+        "documents": "Documents"
+      },
+      "agreement": {
+        "label": "I confirm that I am authorized to represent this company and that all provided information is accurate and complete.",
+        "terms": "Terms of Service",
+        "privacy": "Privacy Policy",
+        "alreadyAccepted": "Legal agreement accepted on {date}."
+      },
+      "fields": {
+        "companyName": "Company name",
+        "authorizedPerson": "Authorized person (full name)",
+        "taxId": "Tax ID",
+        "vatId": "VAT ID",
+        "iban": "IBAN",
+        "phone": "Phone number",
+        "street": "Street and house number",
+        "city": "City",
+        "postalCode": "Postal code",
+        "country": "Country"
+      },
+      "documents": {
+        "tradeRegister": "Trade register extract",
+        "idPassport": "ID / Passport",
+        "taxDocument": "Tax document (optional)",
+        "uploaded": "Uploaded",
+        "notUploaded": "Not uploaded yet",
+        "required": "Required",
+        "optional": "Optional",
+        "chooseFile": "Choose file"
+      },
+      "buttons": {
+        "submit": "Submit for verification",
+        "saving": "Saving…"
+      },
+      "validation": {
+        "agreement": "Please accept the legal agreement first.",
+        "documents": "Please upload trade register extract and ID/Passport."
+      },
+      "messages": {
+        "saved": "Data saved and submitted for verification.",
+        "saveError": "Error saving."
+      }
+    },
+    "users": {
+      "title": "Users and Permissions",
+      "tabs": {
+        "all": "All",
+        "kybPending": "KYB Pending ({count})"
+      },
+      "table": {
+        "name": "Name",
+        "email": "Email",
+        "store": "Store",
+        "role": "Role",
+        "status": "Status",
+        "joined": "Joined",
+        "actions": "Actions"
+      },
+      "roles": {
+        "superuser": "Superuser",
+        "seller": "Seller"
+      },
+      "actions": {
+        "kyb": "KYB",
+        "edit": "Edit",
+        "makeAdmin": "Make Admin",
+        "removeSuperuser": "Remove Superuser",
+        "delete": "Delete"
+      },
+      "kyb": {
+        "title": "KYB Review",
+        "approve": "Approve",
+        "reject": "Reject",
+        "suspend": "Suspend",
+        "rejectionReason": "Rejection reason",
+        "rejectionReasonPlaceholder": "Reason…",
+        "close": "Close",
+        "fields": {
+          "companyName": "Company",
+          "authorizedPerson": "Authorized person",
+          "taxId": "Tax ID",
+          "vatId": "VAT ID",
+          "iban": "IBAN",
+          "phone": "Phone",
+          "country": "Country",
+          "agreementAccepted": "Agreement accepted",
+          "agreementDate": "Agreement date",
+          "riskScore": "Risk score",
+          "documents": "Documents"
+        }
+      },
+      "deleteConfirm": {
+        "title": "Delete user?",
+        "body": "will be permanently deleted.",
+        "cancel": "Cancel",
+        "confirm": "Delete"
+      },
+      "messages": {
+        "loading": "Loading…",
+        "empty": "No users found.",
+        "superuserGranted": "Superuser access granted.",
+        "superuserRevoked": "Superuser access revoked.",
+        "updateFailed": "Update failed.",
+        "deleteFailed": "Delete failed.",
+        "approvalUpdated": "Approval status updated."
+      }
+    }
+  },
+  "marketing": {
+    "discounts": {
+      "title": "Discounts",
+      "newDiscount": "New Discount",
+      "loading": "Loading…",
+      "empty": "No discounts found.",
+      "table": {
+        "code": "Code",
+        "type": "Type",
+        "value": "Value",
+        "usage": "Usage",
+        "expires": "Expires",
+        "status": "Status"
+      },
+      "actions": {
+        "edit": "Edit",
+        "delete": "Delete"
+      }
+    }
+  },
+  "content": {
+    "media": {
+      "title": "Media Library",
+      "upload": "Upload",
+      "loading": "Loading…",
+      "empty": "No media files found.",
+      "searchPlaceholder": "Search media…"
+    }
+  },
+  "helpCenter": {
+    "title": "Help & Guides",
+    "subtitle": "Answers and how-tos for everything on Trulo — from approval to billing.",
+    "searchPlaceholder": "Search help articles…",
+    "allCategories": "All topics",
+    "noResults": "No articles found. Try a different search term.",
+    "back": "Back to overview",
+    "readArticle": "Read article"
+  }
+}

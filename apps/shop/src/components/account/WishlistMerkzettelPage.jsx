@@ -1,0 +1,104 @@
+﻿"use client";
+
+import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
+import { useAuthGuard, getToken } from "@trulo/lib";
+import GlobalPageLoader from "@/components/ui/GlobalPageLoader";
+import { Link, useRouter } from "@/i18n/navigation";
+import ShopHeader from "@/components/ShopHeader";
+import Footer from "@/components/Footer";
+import AccountPageLayout, { ACCOUNT_PAGE_MAIN_INNER } from "@/components/account/AccountPageLayout";
+import { ProductCard } from "@/components/ProductCard";
+import { getMedusaClient } from "@/lib/medusa-client";
+import { useCustomerAuth as useAuth } from "@trulo/lib";
+import styled from "styled-components";
+
+const ORANGE = "#ee8a12";
+const DARK = "#1A1A1A";
+const GRAY = "#6b7280";
+const BORDER = "#e5e7eb";
+
+const WishGrid = styled.div`
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  @media (max-width: 767px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+`;
+
+export default function WishlistMerkzettelPage() {
+  useAuthGuard({ requiredRole: "customer", redirectTo: "/login" });
+  const { user, logout } = useAuth();
+  const tw = useTranslations("wishlist");
+  const router = useRouter();
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      const token = getToken("customer");
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      const client = getMedusaClient();
+      const w = await client.getWishlist(token);
+      const ids = (w?.items || []).map((x) => x.product_id).filter(Boolean);
+      const list = [];
+      for (const id of ids) {
+        const res = await client.getProduct(id);
+        if (res?.product) list.push(res.product);
+      }
+      setProducts(list);
+      setLoading(false);
+    };
+    load();
+  }, [user?.id]);
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fafafa" }}>
+      <ShopHeader />
+      <main style={{ flex: 1 }}>
+        <div style={ACCOUNT_PAGE_MAIN_INNER}>
+          <AccountPageLayout title={tw("title")} onLogout={() => { logout(); router.push("/"); }}>
+            <div>
+              {loading ? (
+                <GlobalPageLoader />
+              ) : products.length === 0 ? (
+                <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: 40, textAlign: "center" }}>
+                  <p style={{ color: GRAY, marginBottom: 20 }}>{tw("empty")}</p>
+                  <Link
+                    href="/"
+                    style={{
+                      display: "inline-block",
+                      background: ORANGE,
+                      color: "#fff",
+                      padding: "10px 24px",
+                      borderRadius: 10,
+                      fontWeight: 700,
+                      textDecoration: "none",
+                      border: "1px solid #e6dfd4",
+                      boxShadow: "0 0 0 1px rgba(29,27,24,0.08)",
+                    }}
+                  >
+                    Zum Shop
+                  </Link>
+                </div>
+              ) : (
+                <WishGrid>
+                  {products.map((p) => (
+                    <ProductCard key={p.id} product={p} />
+                  ))}
+                </WishGrid>
+              )}
+            </div>
+          </AccountPageLayout>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}

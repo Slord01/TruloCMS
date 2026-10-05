@@ -1,0 +1,878 @@
+"use client";
+
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useLocale } from "next-intl";
+import { getUI } from "@/lib/ui-strings";
+import { lt, dateLocaleFor } from "@/lib/locale-text";
+import { statusLabel as localizeStatus } from "@/lib/status-labels";
+import { returnSlipFilename } from "@/lib/download-names";
+import { getOrdersReturnsCopy } from "@/lib/orders-returns-i18n";
+import { getMedusaAdminClient } from "@/lib/medusa-admin-client";
+
+/* ───────── helpers ───────── */
+function fmtDate(d, locale) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString(dateLocaleFor(locale), { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+function fmtMoney(cents, locale) {
+  if (cents == null) return "—";
+  return (cents / 100).toLocaleString(dateLocaleFor(locale), { style: "currency", currency: "EUR" });
+}
+
+/* ───────── constants ───────── */
+const STATUS_COLORS = {
+  offen:         { bg: "#fff7ed", color: "#c2410c", dot: "#f97316" },
+  genehmigt:     { bg: "#f0fdf4", color: "#15803d", dot: "#22c55e" },
+  eingegangen:   { bg: "#eef2ff", color: "#3730a3", dot: "#6366f1" },
+  abgelehnt:     { bg: "#fef2f2", color: "#b91c1c", dot: "#ef4444" },
+  abgeschlossen: { bg: "#f3eee6", color: "#3a352f", dot: "#a39a8d" },
+};
+const REFUND_STATUS_COLORS = {
+  erstattet: { bg: "#fcebd5", color: "#7f3f00" },
+  ausstehend: { bg: "#fefce8", color: "#a16207" },
+};
+const LABEL_CHARGE_COLORS = {
+  pending: { bg: "#fefce8", color: "#a16207" },
+  charged: { bg: "#f0fdf4", color: "#15803d" },
+  charge_failed: { bg: "#fef2f2", color: "#b91c1c" },
+};
+
+/* ───────── Badge ───────── */
+function Badge({ value, map, locale }) {
+  const s = (map || STATUS_COLORS)[value] || { bg: "#f3eee6", color: "#5e574e", dot: "#a39a8d" };
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: s.bg, color: s.color }}>
+      {s.dot && <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.dot, flexShrink: 0 }} />}
+      {value ? localizeStatus(locale, value) : "—"}
+    </span>
+  );
+}
+
+/* ───────── Return label HTML builder ───────── */
+function buildReturnLabelHtml(ret, locale) {
+  const loc = String(locale || "de").slice(0, 2).toLowerCase();
+  const customerName = [ret.first_name, ret.last_name].filter(Boolean).join(" ") || ret.email || lt(loc, "Customer", "Müşteri", "Client", "Cliente", "Cliente", "Kunde");
+  const title = lt(loc, "Return slip", "İade fişi", "Bon de retour", "Albarán de devolución", "Bolla di reso", "Retoureschein");
+  const subtitle = lt(loc, "Please include this slip in the package.", "Lütfen bu fişi pakete ekleyin.", "Veuillez joindre ce bon au colis.", "Incluya este albarán en el paquete.", "Inserire questa bolla nel pacco.", "Bitte legen Sie diesen Schein dem Paket bei.");
+  const returnNo = lt(loc, "Return no.", "İade no.", "N° retour", "N° devolución", "N° reso", "Retoure-Nr.");
+  const dateLabel = lt(loc, "Date", "Tarih", "Date", "Fecha", "Data", "Datum");
+  const statusFieldLabel = lt(loc, "Status", "Durum", "Statut", "Estado", "Stato", "Status");
+  const customerLabel = lt(loc, "Customer", "Müşteri", "Client", "Cliente", "Cliente", "Kunde");
+  const emailLabel = lt(loc, "Email", "E-posta", "E-mail", "Correo", "E-mail", "E-Mail");
+  const orderLabel = lt(loc, "Order", "Sipariş", "Commande", "Pedido", "Ordine", "Bestellung");
+  const returnNumHint = lt(loc, "Return number — attach visibly to the package", "İade numarası — pakete görünür şekilde yapıştırın", "Numéro de retour — à coller visiblement sur le colis", "Número de devolución — pegar visiblemente al paquete", "Numero reso — attaccare in modo visibile al pacco", "Retoure-Nummer – bitte gut sichtbar auf das Paket kleben");
+  const reasonTitle = lt(loc, "Return reason", "İade nedeni", "Motif du retour", "Motivo de devolución", "Motivo reso", "Rückgabegrund");
+  const noReason = lt(loc, "No reason given", "Neden belirtilmedi", "Aucun motif indiqué", "Sin motivo indicado", "Nessun motivo indicato", "Kein Grund angegeben");
+  const itemsTitle = lt(loc, "Items", "Ürünler", "Articles", "Artículos", "Articoli", "Artikel");
+  const itemCol = lt(loc, "Item", "Ürün", "Article", "Artículo", "Articolo", "Artikel");
+  const qtyCol = lt(loc, "Qty", "Adet", "Qté", "Cant.", "Qtà", "Menge");
+  const returnTo = lt(loc, "Return to:", "İade adresi:", "Retour à :", "Devolución a:", "Reso a:", "Rücksendung an:");
+  const returnAddress = lt(loc, "Your company name · Street · Postal code City · Country", "Firma adınız · Sokak · Posta kodu Şehir · Ülke", "Votre société · Rue · Code postal Ville · Pays", "Su empresa · Calle · CP Ciudad · País", "Ragione sociale · Via · CAP Città · Paese", "Ihr Firmenname · Straße · PLZ Stadt · Deutschland");
+  const createdOn = lt(loc, "Created on", "Oluşturulma", "Créé le", "Creado el", "Creato il", "Erstellt am");
+  return `<!DOCTYPE html><html lang="${loc}"><head><meta charset="UTF-8">
+<title>${title} #${ret.return_number || ret.id?.slice(0, 8)}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 40px; color: #111; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .subtitle { color: #5e574e; font-size: 13px; margin-bottom: 32px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px; }
+  .section label { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #5e574e; display: block; margin-bottom: 3px; }
+  .section p { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+  .box { border: 2px dashed #e6dfd4; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0; }
+  .box .big { font-size: 32px; font-weight: 800; letter-spacing: 4px; color: #111; }
+  .box small { font-size: 11px; color: #5e574e; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #faf7f2; padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing:.04em; color: #5e574e; }
+  td { padding: 8px 12px; border-bottom: 1px solid #f3eee6; }
+  .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e6dfd4; font-size: 11px; color: #a39a8d; }
+</style>
+</head><body>
+<h1>${title}</h1>
+<div class="subtitle">${subtitle}</div>
+<div class="grid">
+  <div class="section">
+    <label>${returnNo}</label><p>R-${ret.return_number || "—"}</p>
+    <label>${dateLabel}</label><p>${fmtDate(ret.created_at, locale)}</p>
+    <label>${statusFieldLabel}</label><p>${localizeStatus(loc, ret.status)}</p>
+  </div>
+  <div class="section">
+    <label>${customerLabel}</label><p>${customerName}</p>
+    <label>${emailLabel}</label><p>${ret.email || "—"}</p>
+    <label>${orderLabel}</label><p>${ret.order_number ? "#" + ret.order_number : "—"}</p>
+  </div>
+</div>
+<div class="box">
+  <div class="big">R-${ret.return_number || ret.id?.slice(0, 8)}</div>
+  <small>${returnNumHint}</small>
+</div>
+<h3 style="margin-bottom:8px;font-size:14px;">${reasonTitle}</h3>
+<p style="font-size:13px;color:#3a352f;margin-bottom:20px;">${ret.reason || noReason}${ret.notes ? "<br><span style='color:#5e574e;font-size:12px;'>" + ret.notes + "</span>" : ""}</p>
+${ret.items && ret.items.length ? `
+<h3 style="margin-bottom:8px;font-size:14px;">${itemsTitle}</h3>
+<table>
+  <thead><tr><th>${itemCol}</th><th>${qtyCol}</th></tr></thead>
+  <tbody>${ret.items.map(i => `<tr><td>${i.title || i.name || "—"}</td><td>${i.quantity || 1}</td></tr>`).join("")}</tbody>
+</table>` : ""}
+<div class="footer">
+  <strong>${returnTo}</strong> ${returnAddress}<br>
+  ${returnNo} R-${ret.return_number || "—"} · ${createdOn} ${fmtDate(ret.created_at, locale)}
+</div>
+</body></html>`;
+}
+
+function downloadRetourenschein(ret, locale) {
+  const html = buildReturnLabelHtml(ret, locale);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = returnSlipFilename(ret.return_number || ret.id?.slice(0, 8), locale);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ───────── RefundModal ───────── */
+function RefundModal({ ret, onClose, onRefunded, locale }) {
+  const ui = getUI(locale);
+  const c = getOrdersReturnsCopy(locale);
+  const orderTotal = ret.total_cents || 0;
+  const [mode, setMode] = useState("full"); // "full" | "partial"
+  const [amount, setAmount] = useState((orderTotal / 100).toFixed(2));
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const cents = Math.round(parseFloat(amount) * 100);
+    if (!cents || isNaN(cents) || cents <= 0) {
+      setError(c.invalidAmount);
+      return;
+    }
+    if (cents > orderTotal && orderTotal > 0) {
+      setError(c.amountExceeds(fmtMoney(orderTotal, locale)));
+      return;
+    }
+    setSaving(true);
+    try {
+      const client = getMedusaAdminClient();
+      const res = await client.refundReturn(ret.id, { refund_amount_cents: cents, refund_note: note });
+      onRefunded(res?.return ?? { ...ret, refund_amount_cents: cents, refund_note: note, refund_status: "erstattet" });
+      onClose();
+    } catch (err) {
+      setError(err?.message || c.error);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 12, width: 480, boxShadow: "0 20px 60px rgba(0,0,0,.2)", padding: 28 }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 700 }}>{c.refund}</h2>
+        <p style={{ margin: "0 0 20px", fontSize: 13, color: "#5e574e" }}>
+          R-{ret.return_number} · {c.order} #{ret.order_number} · {c.total}: <strong>{fmtMoney(orderTotal, locale)}</strong>
+        </p>
+
+        {/* Mode toggle */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          {["full", "partial"].map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => {
+                setMode(m);
+                if (m === "full") setAmount((orderTotal / 100).toFixed(2));
+              }}
+              style={{
+                padding: "6px 16px", borderRadius: 8, fontSize: 13, cursor: "pointer", fontWeight: mode === m ? 700 : 400,
+                background: mode === m ? "#1d1b18" : "#faf7f2",
+                color: mode === m ? "#fff" : "#3a352f",
+                border: mode === m ? "none" : "1px solid #e6dfd4",
+              }}
+            >
+              {m === "full" ? c.fullRefund : c.partialRefund}
+            </button>
+          ))}
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#3a352f", display: "block", marginBottom: 4 }}>{c.amountLabel}</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              readOnly={mode === "full"}
+              style={{ width: "100%", padding: "8px 10px", border: "1px solid #e6dfd4", borderRadius: 6, fontSize: 14, fontWeight: 700, boxSizing: "border-box", background: mode === "full" ? "#faf7f2" : "#fff" }}
+            />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#3a352f", display: "block", marginBottom: 4 }}>{c.internalNote}</label>
+            <textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder={c.notePlaceholder}
+              style={{ width: "100%", padding: "7px 10px", border: "1px solid #e6dfd4", borderRadius: 6, fontSize: 13, height: 68, resize: "vertical", boxSizing: "border-box" }}
+            />
+          </div>
+
+          {/* Payment method notice */}
+          <div style={{ background: "#fcebd5", border: "1px solid #f5d3a8", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7f3f00" }}>
+            <strong>{c.paymentMethod}:</strong> {ret.payment_method || c.unknown}<br />
+            <span style={{ color: "#ee8a12" }}>{c.paymentNote}</span>
+          </div>
+
+          {error && <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 12 }}>{error}</div>}
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button type="button" onClick={onClose} style={{ padding: "8px 16px", background: "#faf7f2", border: "1px solid #e6dfd4", borderRadius: 7, cursor: "pointer", fontSize: 13 }}>{ui.cancel}</button>
+            <button type="submit" disabled={saving} style={{ padding: "8px 20px", background: saving ? "#a39a8d" : "#a65300", color: "#fff", border: "none", borderRadius: 7, cursor: saving ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600 }}>
+              {saving ? c.processing : `${fmtMoney(Math.round(parseFloat(amount || 0) * 100), locale)} ${c.refundVerb}`}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ───────── DetailPanel (slide-out) ───────── */
+function DetailPanel({ ret, onClose, onUpdate, isSuperuser, locale }) {
+  const ui = getUI(locale);
+  const c = getOrdersReturnsCopy(locale);
+  const [showRefund, setShowRefund] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [sendingLabel, setSendingLabel] = useState(false);
+  const [labelMsg, setLabelMsg] = useState("");
+
+  const handleStatus = async (status) => {
+    setUpdating(true);
+    try {
+      const client = getMedusaAdminClient();
+      const res = await client.updateReturn(ret.id, { status });
+      onUpdate(res?.return ?? { ...ret, status });
+    } catch {}
+    setUpdating(false);
+  };
+
+  const customerName = [ret.first_name, ret.last_name].filter(Boolean).join(" ") || (isSuperuser ? ret.email : null) || c.unknown;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div style={{ position: "fixed", inset: 0, top: 56, background: "rgba(0,0,0,.25)", zIndex: 900 }} onClick={onClose} />
+      {/* Panel */}
+      <div style={{ position: "fixed", right: 0, top: 56, bottom: 0, width: 520, background: "#fff", boxShadow: "-4px 0 32px rgba(0,0,0,.12)", zIndex: 901, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* Header */}
+        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #e6dfd4", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 11, color: "#5e574e", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em" }}>{c.returnWord}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#111", marginTop: 2 }}>R-{ret.return_number || ret.id?.slice(0, 8)}</div>
+            </div>
+            <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, fontSize: 20, color: "#5e574e" }}>✕</button>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Badge value={ret.status} locale={locale} />
+            {ret.refund_status && <Badge value={ret.refund_status} map={REFUND_STATUS_COLORS} locale={locale} />}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+          {/* Quick actions */}
+          {ret.status === "offen" && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+              <button
+                onClick={() => handleStatus("genehmigt")}
+                disabled={updating}
+                style={{ flex: 1, padding: "10px 0", background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}
+              >
+                {c.approve}
+              </button>
+              <button
+                onClick={() => handleStatus("abgelehnt")}
+                disabled={updating}
+                style={{ flex: 1, padding: "10px 0", background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}
+              >
+                {c.reject}
+              </button>
+            </div>
+          )}
+          {ret.status === "genehmigt" && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <button
+                  onClick={() => downloadRetourenschein(ret, locale)}
+                  style={{ flex: 1, padding: "10px 0", background: "#1d1b18", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}
+                >
+                  {c.downloadLabel}
+                </button>
+                <button
+                  disabled={sendingLabel || !!ret.label_sent_at}
+                  onClick={async () => {
+                    setSendingLabel(true); setLabelMsg("");
+                    try {
+                      const client = getMedusaAdminClient();
+                      const res = await client.sendReturnLabel(ret.id);
+                      onUpdate({ ...ret, label_sent_at: res?.label_sent_at || new Date().toISOString() });
+                      setLabelMsg(res?.emailSent ? c.emailSent : c.markedNoSmtp);
+                    } catch { setLabelMsg(c.errorSending); }
+                    setSendingLabel(false);
+                  }}
+                  style={{ flex: 1, padding: "10px 0", background: ret.label_sent_at ? "#f0fdf4" : "#a65300", color: ret.label_sent_at ? "#15803d" : "#fff", border: ret.label_sent_at ? "1px solid #bbf7d0" : "none", borderRadius: 8, cursor: (sendingLabel || !!ret.label_sent_at) ? "default" : "pointer", fontSize: 13, fontWeight: 700 }}
+                >
+                  {sendingLabel ? c.sending : ret.label_sent_at ? c.labelSent : c.sendLabelEmail}
+                </button>
+              </div>
+              {labelMsg && <div style={{ fontSize: 12, color: "#15803d", marginBottom: 8 }}>{labelMsg}</div>}
+              {ret.label_sent_at && (
+                <div style={{ fontSize: 11, color: "#5e574e" }}>{c.labelSentOn} {fmtDate(ret.label_sent_at, locale)}</div>
+              )}
+              <button
+                onClick={() => handleStatus("eingegangen")}
+                disabled={updating}
+                style={{ width: "100%", marginTop: 8, padding: "10px 0", background: "#eef2ff", color: "#3730a3", border: "1px solid #c7d2fe", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}
+              >
+                {c.markReceived}
+              </button>
+            </div>
+          )}
+          {ret.status === "eingegangen" && !ret.refund_status && (
+            <div style={{ marginBottom: 20 }}>
+              <button
+                onClick={() => setShowRefund(true)}
+                style={{ width: "100%", padding: "10px 0", background: "#a65300", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}
+              >
+                {c.refundBtn}
+              </button>
+            </div>
+          )}
+          {ret.status === "abgeschlossen" && !ret.refund_status && (
+            <div style={{ marginBottom: 20 }}>
+              <button
+                onClick={() => setShowRefund(true)}
+                style={{ width: "100%", padding: "10px 0", background: "#a65300", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}
+              >
+                {c.recordRefund}
+              </button>
+            </div>
+          )}
+
+          {/* Info grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+            {[
+              [c.customer, customerName],
+              ...(isSuperuser ? [[c.email, ret.email || "—"]] : []),
+              [c.order, ret.order_number ? `#${ret.order_number}` : "—"],
+              [c.orderTotal, fmtMoney(ret.total_cents, locale)],
+              [c.created, fmtDate(ret.created_at, locale)],
+              [c.approved, fmtDate(ret.approved_at, locale)],
+              [c.returnMethod, ret.return_method === "customer_ships" ? c.methodCustomerShips : c.methodSellerPays],
+              ...(ret.customer_tracking_number ? [[c.customerTracking, `${ret.customer_tracking_number}${ret.customer_carrier_name ? ` (${ret.customer_carrier_name})` : ""}`]] : []),
+            ].map(([label, val]) => (
+              <div key={label}>
+                <div style={{ fontSize: 11, color: "#a39a8d", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#111", marginTop: 2 }}>{val}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Reason / Notes */}
+          <div style={{ background: "#faf7f2", borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: "#5e574e", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>{c.returnReason}</div>
+            <div style={{ fontSize: 14, color: "#111" }}>{ret.reason || "—"}</div>
+            {ret.notes && <div style={{ fontSize: 12, color: "#5e574e", marginTop: 4 }}>{ret.notes}</div>}
+          </div>
+
+          {/* Items */}
+          {ret.items && (Array.isArray(ret.items) ? ret.items : []).length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#3a352f", marginBottom: 8 }}>{c.items}</div>
+              {(Array.isArray(ret.items) ? ret.items : []).map((item, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f3eee6", fontSize: 13 }}>
+                  <span>{item.title || item.name || c.item}</span>
+                  <span style={{ color: "#5e574e" }}>× {item.quantity || 1}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Refund info */}
+          {ret.refund_status && (
+            <div style={{ background: "#fcebd5", border: "1px solid #f5d3a8", borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "#7f3f00", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>{c.refund}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "#7f3f00" }}>{fmtMoney(ret.refund_amount_cents, locale)}</span>
+                <Badge value={ret.refund_status} map={REFUND_STATUS_COLORS} locale={locale} />
+              </div>
+              {ret.refund_note && <div style={{ fontSize: 12, color: "#ee8a12", marginTop: 4 }}>{ret.refund_note}</div>}
+            </div>
+          )}
+
+          {/* Auto-generated DHL return label (Sendcloud) */}
+          <div style={{ background: "#faf7f2", borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: "#5e574e", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>{c.dhlLabelTitle}</div>
+            {ret.label_url ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>{ret.label_carrier_name || "DHL"}</div>
+                    {ret.label_tracking_number && (
+                      <div style={{ fontSize: 12, color: "#5e574e" }}>{c.dhlTrackingNumber}: {ret.label_tracking_number}</div>
+                    )}
+                  </div>
+                  <a href={ret.label_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: "#a65300", textDecoration: "none" }}>
+                    {c.dhlLabelView} ↗
+                  </a>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "#5e574e" }}>{c.dhlChargeStatus}{ret.label_cost_cents ? `: ${fmtMoney(ret.label_cost_cents, locale)}` : ""}</span>
+                  {(() => {
+                    const chargeStatus = ret.label_charge_status || "pending";
+                    const s = LABEL_CHARGE_COLORS[chargeStatus] || LABEL_CHARGE_COLORS.pending;
+                    const label = chargeStatus === "charged" ? c.dhlChargeCharged : chargeStatus === "charge_failed" ? c.dhlChargeFailed : c.dhlChargePending;
+                    return (
+                      <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: s.bg, color: s.color }}>
+                        {label}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 13, color: "#a39a8d" }}>{c.dhlNotGenerated}</div>
+            )}
+          </div>
+
+          {/* Status change */}
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#3a352f", marginBottom: 6 }}>{c.changeStatus}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["offen", "genehmigt", "eingegangen", "abgelehnt", "abgeschlossen"].map(s => (
+                <button
+                  key={s}
+                  onClick={() => handleStatus(s)}
+                  disabled={updating || ret.status === s}
+                  style={{
+                    padding: "5px 12px", borderRadius: 20, fontSize: 12, cursor: ret.status === s ? "default" : "pointer",
+                    fontWeight: ret.status === s ? 700 : 400,
+                    background: ret.status === s ? (STATUS_COLORS[s]?.bg || "#f3eee6") : "#faf7f2",
+                    color: ret.status === s ? (STATUS_COLORS[s]?.color || "#3a352f") : "#5e574e",
+                    border: ret.status === s ? `1px solid ${STATUS_COLORS[s]?.dot || "#e6dfd4"}` : "1px solid #e6dfd4",
+                  }}
+                >
+                  {localizeStatus(locale, s)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showRefund && (
+        <RefundModal
+          ret={ret}
+          onClose={() => setShowRefund(false)}
+          onRefunded={(updated) => { onUpdate(updated); setShowRefund(false); }}
+          locale={locale}
+        />
+      )}
+    </>
+  );
+}
+
+/* ───────── NewReturnModal ───────── */
+function NewReturnModal({ onClose, onCreated, locale }) {
+  const ui = getUI(locale);
+  const c = getOrdersReturnsCopy(locale);
+  const [orderId, setOrderId] = useState("");
+  const [reason, setReason] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!orderId.trim()) {
+      setError(c.orderIdRequired);
+      return;
+    }
+    setSaving(true);
+    try {
+      const client = getMedusaAdminClient();
+      const res = await client.createReturn({ order_id: orderId.trim(), reason, notes });
+      onCreated(res?.return ?? res);
+      onClose();
+    } catch (err) {
+      setError(err?.message || c.error);
+    }
+    setSaving(false);
+  };
+
+  const titleText = c.newReturn;
+  const orderIdLabel = c.orderIdLabel;
+  const orderIdPlaceholder = c.orderIdPlaceholder;
+  const reasonLabel = c.reason;
+  const reasonPlaceholder = c.reasonPlaceholder;
+  const notesLabel = c.notes;
+  const notesPlaceholder = c.notesPlaceholder;
+  const savingText = c.saving;
+  const createText = c.create;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 12, width: 460, boxShadow: "0 20px 60px rgba(0,0,0,.2)", padding: 24 }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ margin: "0 0 20px", fontSize: 16, fontWeight: 700 }}>{titleText}</h2>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>{orderIdLabel}</label>
+            <input value={orderId} onChange={e => setOrderId(e.target.value)} style={inputStyle} placeholder={orderIdPlaceholder} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>{reasonLabel}</label>
+            <input value={reason} onChange={e => setReason(e.target.value)} style={inputStyle} placeholder={reasonPlaceholder} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>{notesLabel}</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 72, resize: "vertical" }} placeholder={notesPlaceholder} />
+          </div>
+          {error && <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 12 }}>{error}</div>}
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button type="button" onClick={onClose} style={btnSecondary}>{ui.cancel}</button>
+            <button type="submit" disabled={saving} style={saving ? btnDisabled : btnPrimary}>
+              {saving ? savingText : createText}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ───────── Main page ───────── */
+export default function OrdersReturnsPage() {
+  const locale = useLocale();
+  const ui = getUI(locale);
+  const c = getOrdersReturnsCopy(locale);
+  const [returns, setReturns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [selected, setSelected] = useState(null); // selected return for detail panel
+  const [filterStatus, setFilterStatus] = useState("alle");
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sort, setSort] = useState("created_desc");
+  const [isSuperuser, setIsSuperuser] = useState(false);
+  useEffect(() => { setIsSuperuser(localStorage.getItem("sellerIsSuperuser") === "true"); }, []);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const client = getMedusaAdminClient();
+        const data = await client.getReturns();
+        setReturns(data.returns || []);
+      } catch { setReturns([]); }
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleUpdate = (updated) => {
+    setReturns(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
+    if (selected?.id === updated.id) setSelected(prev => ({ ...prev, ...updated }));
+  };
+
+  const filtered = useMemo(() => {
+    let list = filterStatus === "alle" ? returns : returns.filter(r => r.status === filterStatus);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(r => {
+        const name = [r.first_name, r.last_name].filter(Boolean).join(" ").toLowerCase();
+        const hay = [r.return_number, r.order_number, name, r.email, r.reason].filter(Boolean).join(" ").toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      list = list.filter(r => r.created_at && new Date(r.created_at) >= from);
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      list = list.filter(r => r.created_at && new Date(r.created_at) <= to);
+    }
+    const sorted = [...list];
+    if (sort === "created_asc") sorted.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    else if (sort === "amount_desc") sorted.sort((a, b) => (b.total_cents || 0) - (a.total_cents || 0));
+    else if (sort === "amount_asc") sorted.sort((a, b) => (a.total_cents || 0) - (b.total_cents || 0));
+    else sorted.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    return sorted;
+  }, [returns, filterStatus, search, dateFrom, dateTo, sort]);
+
+  const counts = returns.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
+  const totalRefunded = returns.filter(r => r.refund_status === "erstattet").reduce((s, r) => s + (r.refund_amount_cents || 0), 0);
+
+  const COLS = [
+    c.colReturnNo,
+    c.order,
+    c.customer,
+    c.colReason,
+    ui.status,
+    c.refund,
+    ui.colDate,
+    ui.colActions,
+  ];
+
+  const filterPillLabels = {
+    alle: c.filterAll,
+    offen: c.filterOpen,
+    genehmigt: c.filterApproved,
+    eingegangen: c.filterReceived,
+    abgelehnt: c.filterRejected,
+    abgeschlossen: c.filterClosed,
+  };
+
+  return (
+    <div style={{ padding: "1rem 0 1.5rem" }}>
+      {/* Header */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem", marginBottom: "0.75rem" }}>
+        <div>
+          <h1 style={{ fontSize: "1.125rem", fontWeight: 650, margin: 0, color: "#1d1b18" }}>{c.pageTitle}</h1>
+          <p style={{ fontSize: "0.75rem", color: "#5e574e", margin: "0.125rem 0 0" }}>{c.pageSubtitle}</p>
+        </div>
+        <button
+          onClick={() => setShowNew(true)}
+          style={{ padding: "0.375rem 0.875rem", background: "#1d1b18", color: "#fff", border: "none", borderRadius: "0.4375rem", cursor: "pointer", fontSize: "0.75rem", fontWeight: 600 }}
+        >
+          + {c.newReturn}
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.5rem", marginBottom: "0.5rem" }}>
+        {[
+          { label: c.statTotal, value: returns.length, color: "#111" },
+          { label: c.filterOpen, value: counts.offen || 0, color: "#c2410c" },
+          { label: c.filterApproved, value: counts.genehmigt || 0, color: "#15803d" },
+          { label: c.statRefunded, value: fmtMoney(totalRefunded, locale), color: "#7f3f00" },
+        ].map(s => (
+          <div key={s.label} style={{ background: "#faf7f2", border: "1px solid #e6dfd4", borderRadius: "0.625rem", padding: "0.5rem 0.75rem" }}>
+            <div style={{ fontSize: "0.6875rem", color: "#a39a8d", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em" }}>{s.label}</div>
+            <div style={{ fontSize: "1.125rem", fontWeight: 700, color: s.color, marginTop: "0.125rem" }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Status pills — same visual language as Orders (compact, bordered pill row) */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.375rem", padding: "0.3125rem 0.5rem", marginBottom: "0.5rem", background: "#fff", border: "1px solid #e6dfd4", borderRadius: "0.5rem" }}>
+        {["alle", "offen", "genehmigt", "eingegangen", "abgelehnt", "abgeschlossen"].map(s => (
+          <button
+            key={s}
+            onClick={() => setFilterStatus(s)}
+            style={{
+              height: "1.75rem", padding: "0 0.625rem", borderRadius: "0.375rem", fontSize: "0.75rem", cursor: "pointer", fontWeight: filterStatus === s ? 650 : 500,
+              background: filterStatus === s ? "#1d1b18" : "#fff",
+              color: filterStatus === s ? "#fff" : "#3a352f",
+              border: filterStatus === s ? "none" : "1px solid #d6ccbd",
+            }}
+          >
+            {filterPillLabels[s]} {s !== "alle" && counts[s] ? `(${counts[s]})` : ""}
+          </button>
+        ))}
+      </div>
+
+      {/* Search / date range / sort — same filter-bar language as Orders */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.375rem", padding: "0.3125rem 0.5rem", marginBottom: "0.5rem", background: "#fff", border: "1px solid #e6dfd4", borderRadius: "0.5rem" }}>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={c.searchPlaceholder}
+          aria-label={c.searchPlaceholder}
+          style={{ flex: "1 1 220px", minWidth: 180, maxWidth: 320, height: "1.75rem", padding: "0 0.5rem", border: "1px solid #d6ccbd", borderRadius: "0.375rem", fontSize: "0.75rem", color: "#1d1b18", background: "#fff", boxSizing: "border-box" }}
+        />
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.75rem", color: "#5e574e" }}>
+          {c.dateFrom}
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            style={{ height: "1.75rem", padding: "0 0.375rem", border: "1px solid #d6ccbd", borderRadius: "0.375rem", fontSize: "0.75rem", color: "#1d1b18" }}
+          />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.75rem", color: "#5e574e" }}>
+          {c.dateTo}
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            style={{ height: "1.75rem", padding: "0 0.375rem", border: "1px solid #d6ccbd", borderRadius: "0.375rem", fontSize: "0.75rem", color: "#1d1b18" }}
+          />
+        </label>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+          aria-label={c.sortLabel}
+          title={c.sortLabel}
+          style={{ height: "1.75rem", padding: "0 0.375rem", border: "1px solid #d6ccbd", borderRadius: "0.375rem", fontSize: "0.75rem", color: "#1d1b18", background: "#fff", cursor: "pointer" }}
+        >
+          <option value="created_desc">{c.sortNewest}</option>
+          <option value="created_asc">{c.sortOldest}</option>
+          <option value="amount_desc">{c.sortAmountDesc}</option>
+          <option value="amount_asc">{c.sortAmountAsc}</option>
+        </select>
+        {(search || dateFrom || dateTo || sort !== "created_desc") && (
+          <button
+            onClick={() => { setSearch(""); setDateFrom(""); setDateTo(""); setSort("created_desc"); }}
+            style={{ height: "1.75rem", padding: "0 0.625rem", borderRadius: "0.375rem", fontSize: "0.75rem", cursor: "pointer", background: "#fff", color: "#5e574e", border: "1px solid #d6ccbd" }}
+          >
+            {ui.clearFilters || (locale === "tr" ? "Filtreleri temizle" : locale === "en" ? "Clear filters" : locale === "fr" ? "Effacer les filtres" : locale === "es" ? "Borrar filtros" : locale === "it" ? "Cancella filtri" : "Filter zurücksetzen")}
+          </button>
+        )}
+      </div>
+
+      {/* Table — compact/dense like Orders: tight cell padding, small uppercase header, hover rows */}
+      <div style={{ background: "#fff", borderRadius: "0.625rem", border: "1px solid #e6dfd4", overflow: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem" }}>
+          <thead>
+            <tr style={{ background: "#faf7f2", borderBottom: "1px solid #e6dfd4" }}>
+              {COLS.map((c, i) => (
+                <th key={i} style={{ padding: "0.375rem 0.625rem", textAlign: "left", fontWeight: 600, fontSize: "0.6875rem", color: "#5e574e", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading && <tr><td colSpan={8} style={{ padding: "2.5rem", textAlign: "center", color: "#a39a8d" }}>{ui.loading}</td></tr>}
+            {!loading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={8} style={{ padding: "3.75rem 1.25rem", textAlign: "center", color: "#a39a8d" }}>
+                  <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>↩️</div>
+                  <div>{c.noReturns}</div>
+                </td>
+              </tr>
+            )}
+            {filtered.map((ret) => {
+              const customerName = [ret.first_name, ret.last_name].filter(Boolean).join(" ") || "—";
+              return (
+                <tr
+                  key={ret.id}
+                  onClick={() => setSelected(ret)}
+                  style={{ borderBottom: "1px solid #f3eee6", cursor: "pointer" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#faf7f2"}
+                  onMouseLeave={e => e.currentTarget.style.background = ""}
+                >
+                  <td style={{ padding: "0.375rem 0.625rem", fontWeight: 700, color: "#111" }}>
+                    R-{ret.return_number || ret.id?.slice(0, 8)}
+                  </td>
+                  <td style={{ padding: "0.375rem 0.625rem", fontWeight: 600, color: "#a65300" }}>
+                    {ret.order_number ? `#${ret.order_number}` : "—"}
+                  </td>
+                  <td style={{ padding: "0.375rem 0.625rem" }}>
+                    <div style={{ fontWeight: 500, lineHeight: 1.25 }}>{customerName}</div>
+                    {isSuperuser && <div style={{ fontSize: "0.6875rem", color: "#a39a8d", lineHeight: 1.25 }}>{ret.email || ""}</div>}
+                  </td>
+                  <td style={{ padding: "0.375rem 0.625rem", color: "#5e574e", maxWidth: "11.25rem" }}>
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ret.reason || "—"}</div>
+                  </td>
+                  <td style={{ padding: "0.375rem 0.625rem" }}>
+                    <Badge value={ret.status} locale={locale} />
+                  </td>
+                  <td style={{ padding: "0.375rem 0.625rem" }}>
+                    {ret.refund_status
+                      ? <><Badge value={ret.refund_status} map={REFUND_STATUS_COLORS} locale={locale} /><div style={{ fontSize: "0.6875rem", color: "#5e574e", marginTop: "0.125rem" }}>{fmtMoney(ret.refund_amount_cents, locale)}</div></>
+                      : <span style={{ color: "#d6ccbd" }}>—</span>}
+                  </td>
+                  <td style={{ padding: "0.375rem 0.625rem", fontSize: "0.75rem", color: "#5e574e", whiteSpace: "nowrap" }}>{fmtDate(ret.created_at, locale)}</td>
+                  <td style={{ padding: "0.375rem 0.625rem" }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display: "flex", gap: "0.375rem" }}>
+                      {ret.status === "offen" && (
+                        <>
+                          <button
+                            onClick={async () => {
+                              const client = getMedusaAdminClient();
+                              const res = await client.updateReturn(ret.id, { status: "genehmigt" });
+                              handleUpdate(res?.return ?? { ...ret, status: "genehmigt" });
+                            }}
+                            style={{ padding: "0.1875rem 0.625rem", background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: "0.375rem", cursor: "pointer", fontSize: "0.6875rem", fontWeight: 700 }}
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const client = getMedusaAdminClient();
+                              const res = await client.updateReturn(ret.id, { status: "abgelehnt" });
+                              handleUpdate(res?.return ?? { ...ret, status: "abgelehnt" });
+                            }}
+                            style={{ padding: "0.1875rem 0.625rem", background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: "0.375rem", cursor: "pointer", fontSize: "0.6875rem", fontWeight: 700 }}
+                          >
+                            ✕
+                          </button>
+                        </>
+                      )}
+                      {ret.status === "genehmigt" && (
+                        <>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); downloadRetourenschein(ret); }}
+                            title={c.downloadLabelTitle}
+                            style={{ padding: "0.1875rem 0.625rem", background: "#faf7f2", color: "#3a352f", border: "1px solid #e6dfd4", borderRadius: "0.375rem", cursor: "pointer", fontSize: "0.6875rem" }}
+                          >
+                            ⬇
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (ret.label_sent_at) return;
+                              try {
+                                const client = getMedusaAdminClient();
+                                await client.sendReturnLabel(ret.id);
+                                handleUpdate({ ...ret, label_sent_at: new Date().toISOString() });
+                              } catch {}
+                            }}
+                            title={ret.label_sent_at ? c.labelAlreadySent : c.sendLabelByEmail}
+                            style={{ padding: "0.1875rem 0.625rem", background: ret.label_sent_at ? "#f0fdf4" : "#fcebd5", color: ret.label_sent_at ? "#15803d" : "#a65300", border: `1px solid ${ret.label_sent_at ? "#bbf7d0" : "#f5d3a8"}`, borderRadius: "0.375rem", cursor: ret.label_sent_at ? "default" : "pointer", fontSize: "0.6875rem" }}
+                          >
+                            ✉
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {selected && (
+        <DetailPanel
+          ret={selected}
+          onClose={() => setSelected(null)}
+          onUpdate={handleUpdate}
+          isSuperuser={isSuperuser}
+          locale={locale}
+        />
+      )}
+
+      {showNew && (
+        <NewReturnModal
+          onClose={() => setShowNew(false)}
+          onCreated={(r) => setReturns(prev => [r, ...prev])}
+          locale={locale}
+        />
+      )}
+    </div>
+  );
+}
+
+const labelStyle = { fontSize: 12, fontWeight: 600, color: "#3a352f", display: "block", marginBottom: 4 };
+const inputStyle = { width: "100%", padding: "7px 10px", border: "1px solid #e6dfd4", borderRadius: 6, fontSize: 13, boxSizing: "border-box" };
+const btnPrimary = { padding: "8px 20px", background: "#1d1b18", color: "#fff", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 13, fontWeight: 600 };
+const btnSecondary = { padding: "8px 16px", background: "#faf7f2", border: "1px solid #e6dfd4", borderRadius: 7, cursor: "pointer", fontSize: 13 };
+const btnDisabled = { padding: "8px 20px", background: "#a39a8d", color: "#fff", border: "none", borderRadius: 7, cursor: "not-allowed", fontSize: 13, fontWeight: 600 };

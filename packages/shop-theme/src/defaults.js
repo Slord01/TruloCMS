@@ -1,0 +1,302 @@
+/** Single source of truth for shop theme defaults (sellercentral + shop injector). */
+
+import { DEFAULT_MADE_IN_EUROPE_BADGE } from "./eu-origin.js";
+
+import {
+  DEFAULT_ATC_CODE,
+  DEFAULT_GHOST_BUTTON_CODE,
+  DEFAULT_OUTLINE_BUTTON_CODE,
+  DEFAULT_PRIMARY_BUTTON_CODE,
+  DEFAULT_SECONDARY_BUTTON_CODE,
+} from "./default-button-css.js";
+
+const TYPO_LEVEL = (overrides = {}) => ({
+  font_size: "1rem",
+  font_weight: "400",
+  font_style: "normal",
+  color: "#111827",
+  letter_spacing: "0",
+  line_height: "1.5",
+  font_family: "",
+  margin_top: "0",
+  margin_bottom: "0",
+  ...overrides,
+});
+
+export const DEFAULT_SHOP_STYLES = {
+  colors: {
+    primary: "#ff971c",
+    secondary: "#111827",
+    accent: "#ef8200",
+    text: "#111827",
+    background: "#ffffff",
+  },
+  topbar: {
+    variant: "default",
+    enabled: false,
+    /** "inline" = alle Einträge nebeneinander; "carousel" = nacheinander, zeitgesteuert + Wischen/Pfeile */
+    display_mode: "inline",
+    /** Sekunden zwischen automatischen Slides (Karussell, min 2) */
+    carousel_interval_sec: 5,
+    /** Einträge: Text + optionaler Link (Pfad z.B. /contact) */
+    items: [],
+    bg_color: "#111827",
+    text_color: "#ffffff",
+    height: "40px",
+    font_size: "13px",
+    font_weight: "400",
+    shadow: "none",
+    border_bottom: "none",
+  },
+  header: {
+    variant: "default",
+    bg_color: "#ffffff",
+    /** Optional URL — liegt unter Farbe/Verlauf (background-size: cover) */
+    bg_image_url: "",
+    /** Solid fallback / Verlauf Startfarbe */
+    bg_gradient_enabled: false,
+    /** Zweite Verlaufsfarbe (Zielton bei Intensität 100%) */
+    bg_gradient_end: "#0f766e",
+    /** CSS linear-gradient Winkel in Grad (z. B. 180 = oben → unten) */
+    bg_gradient_angle: 135,
+    /** 0–100: wie stark zur zweiten Farbe überblendet wird */
+    bg_gradient_intensity: 75,
+    text_color: "#111827",
+    height: "72px",
+    height_desktop: "",
+    height_tablet: "",
+    height_mobile: "",
+    compact_height_desktop: "",
+    compact_height_tablet: "",
+    compact_height_mobile: "",
+    shadow: "0 2px 8px rgba(0,0,0,0.08)",
+    border_bottom: "1px solid #f3f4f6",
+    /** Nur auf passenden Routen — leeres Objekt = überall Standard */
+    scopes: {
+      category: {},
+      collection: {},
+    },
+  },
+  secondNav: {
+    variant: "default",
+    /** Fallback wenn bg_desktop|tablet|mobile nicht gesetzt (Stil-Vorlage kann setzen) */
+    bg_color: "#f9fafb",
+    /** Fallback Rahmen (CSS `border`-Kurzform), wenn border_* nicht gesetzt */
+    border: "none",
+    text_color: "#374151",
+    active_color: "#ff971c",
+    height: "44px",
+    height_desktop: "",
+    height_tablet: "",
+    height_mobile: "",
+    hide_on_scroll: true,
+    chrome_covers_on_scroll: false,
+    /** Desktop ≥1024px: when true, second nav keeps its own bg at page top (no merge with header gradient) */
+    own_color_at_top_desktop: false,
+    font_size: "14px",
+    font_weight: "500",
+    /** Link-Darstellung je Viewport: classic = Text + Hover-Unterstrich, pill = Frostglas-Kachel */
+    link_style_desktop: "classic",
+    link_style_tablet: "pill",
+    link_style_mobile: "pill",
+    /** Glasmorphism-Kacheln je Link (Desktop/Mobil/Tablet) */
+    pill_background: "rgba(255,255,255,0.30)",
+    pill_border: "none",
+    pill_backdrop: "blur(12px)",
+    /** px — Prozent macht breite Links zu „Pillen“/Zylinder; nur Ecken leicht runden */
+    pill_border_radius: "10px",
+    pill_padding: "6px 14px",
+    pill_shadow: "none",
+  },
+  footer: {
+    bg_color: "#111827",
+    text_color: "#d1d5db",
+    border_top: "none",
+    /** Optional line under the footer logo (empty = shop default text) */
+    tagline: "",
+    instagram_url: "",
+    facebook_url: "",
+    tiktok_url: "",
+  },
+  typography: {
+    google_font_family: "",
+    /** @deprecated use body — kept for migration */
+    font_family: "Inter, system-ui, sans-serif",
+    body: TYPO_LEVEL({
+      font_size: "16px",
+      line_height: "1.6",
+      color: "#111827",
+      font_weight: "400",
+    }),
+    h1: TYPO_LEVEL({
+      font_size: "clamp(28px,5vw,52px)",
+      font_weight: "800",
+      color: "#111827",
+      letter_spacing: "-0.02em",
+      line_height: "1.15",
+      margin_top: "0.67em",
+      margin_bottom: "0.67em",
+    }),
+    h2: TYPO_LEVEL({
+      font_size: "clamp(22px,3.5vw,36px)",
+      font_weight: "700",
+      color: "#111827",
+      letter_spacing: "-0.01em",
+      line_height: "1.2",
+      margin_top: "0.83em",
+      margin_bottom: "0.83em",
+    }),
+    h3: TYPO_LEVEL({
+      font_size: "clamp(1.15rem,2.4vw,1.65rem)",
+      font_weight: "700",
+      line_height: "1.25",
+      letter_spacing: "-0.01em",
+      margin_top: "1em",
+      margin_bottom: "1em",
+    }),
+    h4: TYPO_LEVEL({
+      font_size: "clamp(1.05rem,1.8vw,1.2rem)",
+      font_weight: "600",
+      line_height: "1.3",
+      margin_top: "1.33em",
+      margin_bottom: "1.33em",
+    }),
+    h5: TYPO_LEVEL({
+      font_size: "1rem",
+      font_weight: "600",
+      line_height: "1.35",
+      margin_top: "1.67em",
+      margin_bottom: "1.67em",
+    }),
+    /** Produktseite: Titel in der Buybox (semantisch oft h1, visuell eigenes Profil) */
+    product_title: TYPO_LEVEL({
+      font_size: "clamp(1.25rem, 2.5vw, 1.75rem)",
+      font_weight: "700",
+      line_height: "1.3",
+      letter_spacing: "-0.02em",
+    }),
+    /** Kategorie-, Kollektions-, Marken-Überschriften (Listing-Seiten, nicht Fließtext/Blog) */
+    catalog_title: TYPO_LEVEL({
+      font_size: "clamp(1.125rem, 2.8vw, 2rem)",
+      font_weight: "700",
+      line_height: "1.2",
+      letter_spacing: "-0.02em",
+      margin_top: "0.67em",
+      margin_bottom: "0.67em",
+    }),
+    /** Kategorien-Dropdown / Mega-Menü Einträge (nicht Second-Nav-Leiste) */
+    menu_catalog: TYPO_LEVEL({
+      font_size: "15px",
+      font_weight: "500",
+      line_height: "1.35",
+      color: "#374151",
+    }),
+    /** Filter-Seitenleiste: Gruppen-Titel (Facetten) + Abschnitts-Titel */
+    sidebar_nav: TYPO_LEVEL({
+      font_size: "13px",
+      font_weight: "700",
+      line_height: "1.3",
+      letter_spacing: "0.02em",
+      color: "#111827",
+    }),
+    /** Filter-Seitenleiste: Subkategorie-Links + Facetten-Optionen */
+    sidebar_submenu: TYPO_LEVEL({
+      font_size: "13px",
+      font_weight: "400",
+      line_height: "1.35",
+      letter_spacing: "0",
+      color: "#4b5563",
+    }),
+  },
+  scrollUpButton: {
+    variant: "default",
+    bg_color: "#ff971c",
+    icon_color: "#ffffff",
+    border_radius: "50%",
+    size: "44px",
+    shadow: "0 4px 12px rgba(0,0,0,0.2)",
+    border: "none",
+  },
+  /** Mobil/tablet (≤1023px): kaydırma davranışı, üst/alt şerit */
+  mobileChrome: {
+    /**
+     * Kaydırınca (sayfa üstünden çıkınca) üst şerit yüzeyi.
+     * frosted_white = tema rengine bakmadan buzlu beyaz; inherit = tema + landing degrade korunur.
+     */
+    header_on_scroll: "frosted_white",
+    frosted_bg: "rgba(255,255,255,0.92)",
+    frosted_blur: "16px",
+    /** false = dar görünümde header sabit overlay değil, sayfa akışında */
+    header_sticky: true,
+    /** false = alt menü viewport’a yapışmaz; sayfa sütununun sonunda (footer altı) */
+    bottom_nav_sticky: true,
+    /** true = aşağı kaydırırken alt çubuğu geçici olarak gizle (yalnızca fixed alt menüde) */
+    bottom_nav_recess_on_scroll: false,
+    bottom_nav_bg: "rgba(255,255,255,0.97)",
+    bottom_nav_border_top: "1px solid rgba(229,231,235,0.9)",
+    bottom_nav_blur: "12px",
+    bottom_nav_shadow: "0 -2px 12px rgba(0,0,0,0.07)",
+  },
+  /** Kollektion-Template (shop/[handle]) görünüm ayarları */
+  collection_template: {
+    banner_style: "strip",    // "strip" | "medium" | "tall" | "none"
+    show_sidebar: true,
+    sidebar_width: "220px",
+    products_per_row: 4,
+    products_per_row_mobile: 2,
+    richtext_align: "left",   // "left" | "center"
+    richtext_max_width: "700px",
+    content_padding_x: "32px",
+    filter_checkbox_size: 10,
+  },
+  /** Kategorie-Template (shop/category/[slug]) görünüm ayarları */
+  category_template: {
+    banner_style: "strip",
+    show_sidebar: true,
+    sidebar_width: "280px",
+    products_per_row: 4,
+    products_per_row_mobile: 2,
+    richtext_align: "left",
+    richtext_max_width: "full",
+    content_padding_x: "32px",
+    filter_checkbox_size: 10,
+  },
+  /**
+   * CMS Seiten (Content → Pages / shop /pages/:slug und Handle-Routen).
+   * padding_top = Extra-Abstand unter dem Header (Header-Spacer ist separat). Default 0.
+   */
+  cms_page_template: {
+    padding_top: 0,
+    padding_bottom: 48,
+  },
+  buttons: {
+    add_to_cart: {
+      label: "Add to Cart Button",
+      variants: [{ name: "Orange Theme (Standard)", code: DEFAULT_ATC_CODE, active: true }],
+    },
+    primary: {
+      label: "Primary Button",
+      variants: [{ name: "Current Shop Button", code: DEFAULT_PRIMARY_BUTTON_CODE, active: true }],
+    },
+    secondary: {
+      label: "Secondary Button",
+      variants: [{ name: "Outlined Secondary", code: DEFAULT_SECONDARY_BUTTON_CODE, active: true }],
+    },
+    ghost: {
+      label: "Ghost Button",
+      variants: [{ name: "Transparent Ghost", code: DEFAULT_GHOST_BUTTON_CODE, active: true }],
+    },
+    outline: {
+      label: "Outline Button",
+      variants: [{ name: "Outline Accent", code: DEFAULT_OUTLINE_BUTTON_CODE, active: true }],
+    },
+  },
+  made_in_europe_badge: { ...DEFAULT_MADE_IN_EUROPE_BADGE },
+  bestseller_badge: {
+    /** Optional image URL — shown in badge instead of ★ star when set */
+    image_url: "",
+    badge_width: 80,
+    badge_width_tablet: null,
+    badge_width_mobile: null,
+  },
+};

@@ -1,0 +1,57 @@
+{
+  "name": "trulo-cms",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --filter=@trulo/cms-backend --filter=@trulo/sellercentral --continue=always",
+    "dev:web": "turbo run dev --filter=@trulo/sellercentral --filter=@trulo/shop",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{js,jsx,md}\"",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "start": "npm run start --workspace=@trulo/cms-backend",
+    "storybook": "npm run storybook --workspace=packages/ui",
+    "test:e2e": "playwright test",
+    "admin:create": "npm run create-superuser --workspace=@trulo/cms-backend",
+    "test:cms": "npm run test --workspace=@trulo/cms-backend",
+    "test:cms-ui": "node e2e/trulo-cms.smoke.cjs"
+  },
+  "dependencies": {
+    "@opentelemetry/sdk-trace-base": "^1.28.0",
+    "@sentry/nextjs": "^10.35.0",
+    "cross-env": "^7.0.3",
+    "dotenv": "^17.2.3",
+    "next": "16.0.10",
+    "scheduler": "^0.27.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@turbo/gen": "^2.6.1",
+    "prettier": "^3.0.0",
+    "turbo": "^2.7.5",
+    "wrangler": "^3.94.0"
+  },
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "overrides": {
+    "esbuild": "^0.25.0",
+    "tmp": "^0.2.3",
+    "ws": "^8.21.1",
+    "yaml": "^2.9.0",
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.25.0"
+    },
+    "drizzle-kit": {
+      "@esbuild-kit/esm-loader": {
+        "@esbuild-kit/core-utils": {
+          "esbuild": "^0.25.0"
+        }
+      }
+    }
+  }
+}

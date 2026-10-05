@@ -1,0 +1,150 @@
+/**
+ * Shop public URL: /{country}/{language}/… (no currency segment).
+ * Legacy /{country}/{language}/{currency}/… redirects to the canonical path; currency may be stored in cookie.
+ * Internal Next.js routes stay /{language}/… (next-intl); middleware rewrites.
+ */
+
+export const SHOP_LOCALES = ["en", "de", "tr", "fr", "it", "es"];
+
+/** Lowercase ISO country (market) codes in URL — well-known markets (for reference) */
+export const SHOP_MARKETS = ["de", "at", "ch", "fr", "it", "es", "tr", "gb", "us"];
+
+/** Lowercase currency codes in URL — well-known currencies (for reference) */
+export const SHOP_CURRENCIES = ["eur", "gbp", "chf", "usd", "try"];
+
+const LOCALE_SET = new Set(SHOP_LOCALES);
+
+/**
+ * Resolve enabled shop UI locales from settings payload.
+ * null / empty / invalid → all SHOP_LOCALES (backward compatible).
+ */
+export function resolveEnabledShopLocales(raw) {
+  if (!Array.isArray(raw) || !raw.length) return [...SHOP_LOCALES];
+  const enabled = SHOP_LOCALES.filter((c) =>
+    raw.map((x) => String(x || "").toLowerCase()).includes(c),
+  );
+  return enabled.length ? enabled : [...SHOP_LOCALES];
+}
+
+export function isShopLocaleEnabled(locale, enabledList) {
+  const list = resolveEnabledShopLocales(enabledList);
+  return list.includes(String(locale || "").toLowerCase());
+}
+
+export const DEFAULT_MARKET = "de";
+export const DEFAULT_CURRENCY = "eur";
+
+/** Default market when only language is known (legacy redirects). */
+export function defaultMarketForLocale(locale) {
+  const l = String(locale || "de").toLowerCase();
+  if (l === "en") return "de";
+  if (l === "tr") return "tr";
+  if (l === "fr") return "fr";
+  if (l === "it") return "it";
+  if (l === "es") return "es";
+  return "de";
+}
+
+/** Default URL currency segment for a market country (lowercase ISO). */
+export function defaultCurrencyForMarket(market) {
+  const m = String(market || "de").toLowerCase();
+  if (m === "gb") return "gbp";
+  if (m === "ch" || m === "li") return "chf";
+  if (m === "us" || m === "ca") return "usd";
+  if (m === "tr") return "try";
+  // All other countries default to EUR
+  return "eur";
+}
+
+/** Default locale for a market country (lowercase ISO). */
+export function defaultLocaleForMarket(market) {
+  const m = String(market || "de").toLowerCase();
+  if (["de", "at", "ch", "li", "lu", "be"].includes(m)) return "de";
+  if (["fr", "mc", "sn", "ci", "cm", "cd"].includes(m)) return "fr";
+  if (["it", "sm", "va"].includes(m)) return "it";
+  if (["es", "mx", "ar", "co", "cl", "pe", "ve", "ec", "bo", "py", "uy", "cr", "gt", "hn", "sv", "ni", "pa", "do", "cu", "pr"].includes(m)) return "es";
+  if (m === "tr") return "tr";
+  return "en";
+}
+
+/** Any 2-letter ISO country code is a valid market */
+export function isValidMarket(s) {
+  const v = String(s || "").toLowerCase();
+  return /^[a-z]{2}$/.test(v);
+}
+export function isValidLocale(s) {
+  return LOCALE_SET.has(String(s || "").toLowerCase());
+}
+const CURRENCY_SET = new Set(SHOP_CURRENCIES);
+
+/**
+ * Must match a known currency code (SHOP_CURRENCIES), not just "any 3 letters" —
+ * a blind /^[a-z]{3}$/ regex previously matched things like a "/agb" page slug
+ * in the legacy /{country}/{lang}/{currency}/... path shape, causing
+ * parseMarketPath() to misread it as a currency segment, drop the rest of the
+ * path, and redirect real pages (e.g. /de/de/agb) to the market root.
+ */
+export function isValidCurrency(s) {
+  return CURRENCY_SET.has(String(s || "").toLowerCase());
+}
+
+/**
+ * @param {string} pathname e.g. /de/de/produkt/x or legacy /de/de/eur/produkt/x
+ * @returns {{ country: string, lang: string, currency: string, rest: string } | null}
+ */
+export function parseMarketPath(pathname) {
+  const p = pathname || "";
+  const parts = p.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  const country = parts[0].toLowerCase();
+  const lang = parts[1].toLowerCase();
+  if (!isValidMarket(country) || !isValidLocale(lang)) return null;
+
+  let currency;
+  let restParts;
+  if (parts.length >= 3 && isValidCurrency(parts[2])) {
+    currency = parts[2].toLowerCase();
+    restParts = parts.slice(3);
+  } else {
+    currency = defaultCurrencyForMarket(country);
+    restParts = parts.slice(2);
+  }
+  const joined = restParts.join("/");
+  const rest = joined === "" ? "" : `/${joined}`;
+  return { country, lang, currency, rest };
+}
+
+/** One public URL per language, so Google does not split the same page across /us/en, /tr/tr, /at/de. */
+export function canonicalMarketPrefix(locale) {
+  const lang = String(locale || "de").toLowerCase();
+  return marketPrefix(defaultMarketForLocale(lang), lang);
+}
+
+/** Public storefront prefix (two segments). Third argument ignored — kept for call-site compatibility. */
+export function marketPrefix(country, lang, _currency) {
+  void _currency;
+  return `/${String(country).toLowerCase()}/${String(lang).toLowerCase()}`;
+}
+
+/**
+ * @param {string} targetPath path without market prefix, e.g. /produkt/foo or /cart
+ */
+export function hrefWithMarket(prefix, targetPath) {
+  let t = targetPath || "/";
+  if (!t.startsWith("/")) t = `/${t}`;
+  return `${prefix}${t}`;
+}
+
+const INTERNAL_LOCALE_PREFIX = /^\/(en|de|tr|fr|it|es)(?=\/|$)/i;
+
+/** Path after /country/lang/currency for building same-page links (e.g. /produkt/x). */
+export function restPathFromPathname(pathname) {
+  const p = parseMarketPath(pathname || "");
+  if (p) return p.rest === "" ? "/" : p.rest;
+  const loc = (pathname || "").match(INTERNAL_LOCALE_PREFIX);
+  if (loc) {
+    const rest = pathname.slice(loc[0].length) || "/";
+    return rest.startsWith("/") ? rest : `/${rest}`;
+  }
+  return pathname || "/";
+}

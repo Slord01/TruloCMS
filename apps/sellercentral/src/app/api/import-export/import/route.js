@@ -1,0 +1,1504 @@
+﻿import ExcelJS from "exceljs";
+import { getImportApiMessages, resolveRequestLocale } from "@/lib/import-export-i18n";
+
+const LANGS = ["de", "en", "tr", "fr", "it", "es"];
+/** Legacy per-country Excel columns — still read on import for old templates */
+const LEGACY_PRICE_COUNTRIES = ["DE", "FR", "IT", "ES", "TR"];
+const EUR_PRICE_KEY = "EUR";
+const DEFAULT_BACKEND = "http://localhost:9000";
+
+/** Build metadata.prices block: single EUR list price (shop reads EUR / DE fallback). */
+function collectEurPriceBlock(get) {
+  let brutto =
+    parseCents(get("price")) ??
+    parseCents(get("price_brutto"));
+  let uvp = parseCents(get("price_uvp"));
+  let sale = parseCents(get("price_sale"));
+  if (brutto == null && uvp == null && sale == null) {
+    for (const c of LEGACY_PRICE_COUNTRIES) {
+      if (brutto == null) brutto = parseCents(get(`price_brutto_${c}`));
+      if (uvp == null) uvp = parseCents(get(`price_uvp_${c}`));
+      if (sale == null) sale = parseCents(get(`price_sale_${c}`));
+    }
+  }
+  if (brutto == null && uvp == null && sale == null) return {};
+  const block = {};
+  if (brutto != null) block.brutto_cents = brutto;
+  if (uvp != null) block.uvp_cents = uvp;
+  if (sale != null) block.sale_cents = sale;
+  return { [EUR_PRICE_KEY]: block, DE: { ...block } };
+}
+
+function eurPriceColumnsTouched(kp) {
+  if (kp("price") || kp("price_uvp") || kp("price_sale") || kp("price_brutto")) return true;
+  return LEGACY_PRICE_COUNTRIES.some(
+    (c) => kp(`price_brutto_${c}`) || kp(`price_uvp_${c}`) || kp(`price_sale_${c}`),
+  );
+}
+
+function computeUnitReference(unitTypeRaw) {
+  const unitType = String(unitTypeRaw || "").trim().toLowerCase();
+  // For "grundpreis" UI we want a normalized base:
+  // - grams: show per 1000 g
+  // - milliliters: show per 1000 ml
+  // - kilograms / liters / pieces: show per 1 unit
+  if (unitType === "g" || unitType === "ml") return 1000;
+  if (unitType === "kg" || unitType === "l" || unitType === "stück" || unitType === "piece") return 1;
+  return 1;
+}
+
+function getBackendBase() {
+  return (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, "");
+}
+
+function parseCents(val) {
+  if (val == null || val === "") return undefined;
+  const n = parseFloat(String(val).replace(",", "."));
+  if (isNaN(n)) return undefined;
+  return Math.round(n * 100);
+}
+
+function parseNum(val) {
+  if (val == null || val === "") return undefined;
+  const n = Number(String(val).replace(",", "."));
+  return isNaN(n) ? undefined : n;
+}
+
+function str(val) {
+  if (val == null) return "";
+  if (typeof val === "object") {
+    if (val instanceof Date) return val.toISOString();
+    // ExcelJS hyperlink cell: { text: "...", hyperlink: "..." }
+    if (typeof val.hyperlink === "string" && val.hyperlink) return val.hyperlink.trim();
+    if (typeof val.text === "string" && val.text) return val.text.trim();
+    // ExcelJS formula result
+    if (val.result != null) return String(val.result).trim();
+    // ExcelJS rich text: { richText: [{ text: "..." }, ...] }
+    if (Array.isArray(val.richText)) return val.richText.map((rt) => String(rt.text || "")).join("").trim();
+    return "";
+  }
+  return String(val).trim();
+}
+
+/** Non-empty Excel cell — empty cells must not overwrite existing DB values on update */
+function keyPresent(row, key, idx) {
+  const i = idx[key];
+  if (i === undefined) return false;
+  const v = row[i];
+  if (v == null) return false;
+  if (typeof v === "number" && Number.isNaN(v)) return false;
+  return str(v) !== "";
+}
+
+function flattenCategoryTree(nodes, parentPath = "") {
+  const out = [];
+  for (const node of nodes || []) {
+    const slug = (node.slug || "").trim();
+    const name = (node.name || slug || "").trim();
+    const path = parentPath ? `${parentPath} › ${name}` : name;
+    if (slug) out.push({ id: node.id, slug, name, path });
+    const children = node.children || node.category_children;
+    if (Array.isArray(children) && children.length) {
+      out.push(...flattenCategoryTree(children, path));
+    }
+  }
+  return out;
+}
+
+async function fetchJson(url, init = {}) {
+  const res = await fetch(url, { ...init, cache: "no-store" });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(t || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function registerImportedMediaUrls(backendUrl, authHeaders, urls, targetSellerId = null) {
+  const cleaned = [...new Set((urls || []).map((u) => String(u || "").trim()).filter((u) => /^https?:\/\//i.test(u)))];
+  if (!cleaned.length) return { registered: 0, skipped: 0, folder: null, errors: [], url_map: {} };
+
+  // Backend ingests (download→WebP→R2) with max 40/request and concurrency 3 — keep chunks small
+  // so Vercel/serverless import route does not time out on large catalogs.
+  const CHUNK_SIZE = 30;
+  let registered = 0;
+  let skipped = 0;
+  let folder = null;
+  const errors = [];
+  const urlMap = {};
+
+  for (let i = 0; i < cleaned.length; i += CHUNK_SIZE) {
+    const chunk = cleaned.slice(i, i + CHUNK_SIZE);
+    let chunkDone = false;
+    try {
+      const mr = await fetch(`${backendUrl}/admin-hub/v1/media/import-urls`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          urls: chunk,
+          purpose: "product",
+          ...(targetSellerId ? { target_seller_id: targetSellerId } : {}),
+        }),
+      });
+      if (mr.ok) {
+        const data = await mr.json().catch(() => ({}));
+        registered += Number(data?.registered || 0);
+        skipped += Number(data?.skipped || 0);
+        if (!folder && data?.folder) folder = data.folder;
+        if (data?.url_map && typeof data.url_map === "object") {
+          Object.assign(urlMap, data.url_map);
+        }
+        if (Array.isArray(data?.errors)) {
+          for (const e of data.errors) errors.push(typeof e === "string" ? e : e?.message || JSON.stringify(e));
+        }
+        chunkDone = true;
+      } else {
+        const t = await mr.text().catch(() => "");
+        errors.push(`import-urls failed (${mr.status})${t ? `: ${t}` : ""}`);
+      }
+    } catch (e) {
+      errors.push(`import-urls error: ${e?.message || "request failed"}`);
+    }
+
+    // Fallback for older backends: register URL only (no ingest) via add-url.
+    if (!chunkDone) {
+      for (const url of chunk) {
+        try {
+          const ar = await fetch(`${backendUrl}/admin-hub/v1/media/add-url`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders },
+            body: JSON.stringify({ url, purpose: "product" }),
+          });
+          if (ar.ok) {
+            const data = await ar.json().catch(() => ({}));
+            const hosted = data?.media?.url || url;
+            urlMap[url] = hosted;
+            registered++;
+          } else {
+            urlMap[url] = url;
+            skipped++;
+          }
+        } catch (_) {
+          urlMap[url] = url;
+          skipped++;
+        }
+      }
+    }
+  }
+
+  // Ensure every input URL has a map entry (identity if ingest soft-failed).
+  for (const u of cleaned) {
+    if (!urlMap[u]) urlMap[u] = u;
+  }
+
+  return { registered, skipped, folder, errors, url_map: urlMap };
+}
+
+function wrapGetWithImageUrlMap(getFn, urlMap) {
+  if (!urlMap || !Object.keys(urlMap).length) return getFn;
+  return (row, key) => {
+    const v = getFn(row, key);
+    if (!v) return v;
+    const k = String(key || "").toLowerCase();
+    if (k.startsWith("image_url_") || k === "swatch_image_url") {
+      const mapped = urlMap[String(v).trim()];
+      if (mapped) return mapped;
+    }
+    return v;
+  };
+}
+
+function buildMetafieldLookup(definitions) {
+  const keyByAlias = new Map();
+  const valueByKeyAndAlias = new Map();
+  for (const [rawKey, def] of Object.entries(definitions || {})) {
+    const key = String(rawKey || "").trim();
+    if (!key) continue;
+    keyByAlias.set(key.toLowerCase(), key);
+    const label = String(def?.label || "").trim();
+    if (label) keyByAlias.set(label.toLowerCase(), key);
+    const li18n = def?.label_i18n && typeof def.label_i18n === "object" ? def.label_i18n : {};
+    for (const loc of Object.values(li18n)) {
+      const lab = loc && typeof loc === "object" ? loc.label : loc;
+      if (lab != null && String(lab).trim()) keyByAlias.set(String(lab).trim().toLowerCase(), key);
+    }
+    const vmap = new Map();
+    for (const v of (Array.isArray(def?.values) ? def.values : [])) {
+      const s = String(v || "").trim();
+      if (s) vmap.set(s.toLowerCase(), s);
+    }
+    const vi18n = def?.values_i18n && typeof def.values_i18n === "object" ? def.values_i18n : {};
+    for (const locMap of Object.values(vi18n)) {
+      if (!locMap || typeof locMap !== "object") continue;
+      for (const [canon, translated] of Object.entries(locMap)) {
+        if (translated != null && String(translated).trim()) {
+          vmap.set(String(translated).trim().toLowerCase(), String(canon).trim());
+        }
+        if (canon) vmap.set(String(canon).trim().toLowerCase(), String(canon).trim());
+      }
+    }
+    valueByKeyAndAlias.set(key, vmap);
+  }
+  return { keyByAlias, valueByKeyAndAlias };
+}
+
+function resolveImportedMetaKey(raw, lookup) {
+  const s = String(raw || "").trim();
+  if (!s) return s;
+  return lookup?.keyByAlias?.get(s.toLowerCase()) || s;
+}
+
+function resolveImportedMetaValue(key, raw, lookup) {
+  const s = String(raw || "").trim();
+  if (!s) return s;
+  const vmap = lookup?.valueByKeyAndAlias?.get(key);
+  if (vmap && vmap.has(s.toLowerCase())) return vmap.get(s.toLowerCase());
+  return s;
+}
+
+function resolveMetafieldPairs(pairs, lookup) {
+  if (!Array.isArray(pairs) || !pairs.length) return pairs;
+  return pairs.map((p) => {
+    const key = resolveImportedMetaKey(p.key, lookup);
+    const value = resolveImportedMetaValue(key, p.value, lookup);
+    return { key, value };
+  });
+}
+
+async function loadImportLookups(backendUrl, sellerToken) {
+  const authHeaders = sellerToken ? { Authorization: `Bearer ${sellerToken}` } : {};
+
+  let catsFlat = [];
+  try {
+    const data = await fetchJson(`${backendUrl}/admin-hub/v1/categories?tree=true&active=true`);
+    const tree = data.tree || data.categories || [];
+    catsFlat = flattenCategoryTree(Array.isArray(tree) ? tree : []);
+  } catch {
+    catsFlat = [];
+  }
+
+  const slugToId = new Map();
+  for (const c of catsFlat) {
+    slugToId.set(String(c.slug).toLowerCase(), c.id);
+  }
+
+  let brands = [];
+  try {
+    if (sellerToken) {
+      const data = await fetchJson(`${backendUrl}/admin-hub/brands`, { headers: authHeaders });
+      brands = Array.isArray(data.brands) ? data.brands : [];
+    }
+  } catch {
+    brands = [];
+  }
+  if (!brands.length) {
+    try {
+      const data = await fetchJson(`${backendUrl}/store/brands`);
+      brands = Array.isArray(data.brands) ? data.brands : [];
+    } catch {
+      brands = [];
+    }
+  }
+
+  const brandRank = (b) => {
+    const s = String(b?.status || "active");
+    if (s === "active") return 2;
+    if (s === "pending") return 1;
+    return 0;
+  };
+  const brandByLowerName = new Map();
+  for (const b of brands) {
+    const k = String(b.name || "").trim().toLowerCase();
+    if (!k) continue;
+    const prev = brandByLowerName.get(k);
+    if (!prev || brandRank(b) > brandRank(prev)) brandByLowerName.set(k, b);
+  }
+
+  let shipGroups = [];
+  try {
+    if (sellerToken) {
+      const data = await fetchJson(`${backendUrl}/admin-hub/v1/shipping-groups`, { headers: authHeaders });
+      shipGroups = Array.isArray(data.groups) ? data.groups : [];
+    }
+  } catch {
+    shipGroups = [];
+  }
+
+  const shipByLowerName = new Map();
+  for (const g of shipGroups) {
+    const k = String(g.name || "").trim().toLowerCase();
+    if (k) shipByLowerName.set(k, g);
+  }
+
+  let metafieldDefs = {};
+  try {
+    if (sellerToken) {
+      const data = await fetchJson(`${backendUrl}/admin-hub/metafield-definitions`, { headers: authHeaders });
+      metafieldDefs = data?.definitions && typeof data.definitions === "object" ? data.definitions : {};
+    }
+  } catch {
+    metafieldDefs = {};
+  }
+
+  return { slugToId, brandByLowerName, shipByLowerName, metafieldLookup: buildMetafieldLookup(metafieldDefs) };
+}
+
+/** Dense row values aligned to header columns */
+function normalizeDataRows(ws, headerCount) {
+  const dataRows = [];
+  ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+    if (rowNum <= 3) return;
+    const values = new Array(headerCount).fill(null);
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      if (colNumber <= headerCount) values[colNumber - 1] = cell.value;
+    });
+    if (values.every((v) => v == null || str(v) === "")) return;
+    dataRows.push(values);
+  });
+  return dataRows;
+}
+
+function groupRows(rows, headers) {
+  const idx = {};
+  headers.forEach((h, i) => {
+    const key = str(h);
+    if (!key) return;
+    idx[key] = i;
+    if (key === "manufacturer") idx.hersteller = i;
+    if (key === "manufacturer_information") idx.hersteller_information = i;
+    if (key === "responsible_person_information") idx.verantwortliche_person_information = i;
+    // Excel template input uses `per_unit`; internally we store it as `unit_reference`.
+    if (key === "per_unit") idx.unit_reference = i;
+    const m = key.match(/^variation(\d+)_(name|value)$/i);
+    if (m) {
+      // Backward/forward compatibility: template may expose variationN_* labels,
+      // importer internally uses optionN_* keys.
+      idx[`option${m[1]}_${m[2]}`] = i;
+    }
+  });
+  const get = (row, key) => str(row[idx[key]] ?? "");
+
+  const parents = new Map();
+  const children = new Map();
+  const errors = [];
+
+  for (const row of rows) {
+    const type = get(row, "product_type").toLowerCase();
+    const sku = get(row, "sku");
+    if (!sku || sku.startsWith("#")) continue;
+
+    if (type === "parent") {
+      if (parents.has(sku)) {
+        errors.push({ sku, error: `Duplicate parent SKU in Excel: "${sku}"` });
+        continue;
+      }
+      parents.set(sku, row);
+    } else if (type === "child") {
+      const pSku = get(row, "parent_sku");
+      if (!pSku) continue;
+      if (!children.has(pSku)) children.set(pSku, []);
+      children.get(pSku).push(row);
+    }
+  }
+  for (const [pSku, childRows] of children.entries()) {
+    if (!parents.has(pSku)) {
+      for (const cRow of childRows) {
+        const cSku = get(cRow, "sku");
+        errors.push({
+          sku: cSku || pSku,
+          error: `Child row references unknown parent_sku "${pSku}"`,
+        });
+      }
+    }
+  }
+  return { parents, children, idx, get, errors };
+}
+
+/** Consecutive option1_name… option2_name…; optional empty stops */
+function countParentOptionNames(parentRow, get, maxScan = 40) {
+  let n = 0;
+  for (let i = 1; i <= maxScan; i++) {
+    const name = get(parentRow, `option${i}_name`);
+    if (name && String(name).trim()) n = i;
+    else break;
+  }
+  return n;
+}
+
+function buildVariationGroups(parentRow, childRows, get, optCount, lookup) {
+  const groups = [];
+  for (let n = 1; n <= optCount; n++) {
+    const name = str(get(parentRow, `option${n}_name`));
+    if (!name) continue;
+    const resolvedKey = resolveImportedMetaKey(name, lookup);
+    const valMap = {};
+    for (const cRow of childRows || []) {
+      const cv = (k) => get(cRow, k);
+      const rawVal = str(cv(`option${n}_value`));
+      const val = resolveImportedMetaValue(resolvedKey, rawVal, lookup);
+      if (!val) continue;
+      if (!valMap[val]) valMap[val] = {};
+      if (n === 1) {
+        const sw = str(cv("swatch_image_url"));
+        if (sw) valMap[val].swatch_image = sw;
+      }
+    }
+    if (Object.keys(valMap).length) {
+      groups.push({
+        name,
+        ...(lookup?.keyByAlias?.has(String(name).toLowerCase()) ? { metafield_key: resolvedKey } : {}),
+        options: Object.entries(valMap).map(([value, meta]) => ({
+          value,
+          ...(meta.swatch_image ? { swatch_image: meta.swatch_image } : {}),
+        })),
+      });
+    }
+  }
+  return groups;
+}
+
+/** metafield_N_* on any row; legacy variant_metafield_N_* still accepted (metafield_* wins same N). */
+function collectRowMetafields(row, headers, idx) {
+  const byN = new Map();
+  const ingest = (headerPattern) => {
+    for (const h of headers) {
+      const colKey = str(h);
+      const m = colKey.match(headerPattern);
+      if (!m) continue;
+      const n = parseInt(m[1], 10);
+      if (!byN.has(n)) byN.set(n, {});
+      const col = idx[colKey];
+      if (col === undefined) continue;
+      const raw = row[col];
+      const val = raw == null ? "" : String(raw).trim();
+      byN.get(n)[m[2]] = val;
+    }
+  };
+  ingest(/^variant_metafield_(\d+)_(key|value)$/i);
+  ingest(/^metafield_(\d+)_(key|value)$/i);
+  const out = [];
+  const nums = [...byN.keys()].sort((a, b) => a - b);
+  for (const n of nums) {
+    const p = byN.get(n);
+    const k = (p.key || "").trim();
+    const v = (p.value || "").trim();
+    if (k) out.push({ key: k, value: v });
+  }
+  return out.length ? out : undefined;
+}
+
+const RESERVED_IMPORT_HEADERS = new Set([
+  "product_type", "sku", "parent_sku", "status", "ean", "inventory", "brand", "type",
+  "category_slug", "shipping_group", "manufacturer", "hersteller",
+  "manufacturer_information", "hersteller_information",
+  "responsible_person_information", "verantwortliche_person_information",
+  "weight_grams", "dim_length_cm", "dim_width_cm", "dim_height_cm",
+  "unit_type", "unit_value", "per_unit", "unit_reference",
+  "price", "price_uvp", "price_sale", "weee_number", "eprel_number", "swatch_image_url",
+  "title", "description", "bullet1", "bullet2", "bullet3", "bullet4", "bullet5",
+  "seo_title", "seo_description", "seo_keywords", "verkäufer", "_product_id",
+]);
+
+function isReservedImportHeader(key) {
+  const k = String(key || "");
+  if (!k || RESERVED_IMPORT_HEADERS.has(k.toLowerCase())) return true;
+  if (/^(image_url_\d+|file_\d+_(url|name)|option\d+_(name|value)|variation\d+_(name|value)|metafield_\d+_(key|value)|variant_metafield_\d+_(key|value)|title_.+|description_.+|bullet\d+_.+|seo_(title|description|keywords)_.+)$/i.test(k)) return true;
+  return false;
+}
+
+/** Category compliance columns that are not part of the fixed template (e.g. energy_label_image). */
+function collectComplianceExtras(row, idx) {
+  const out = {};
+  for (const key of Object.keys(idx)) {
+    if (isReservedImportHeader(key)) continue;
+    if (!/^[a-z][a-z0-9_]{0,80}$/.test(key)) continue;
+    const v = str(row[idx[key]] ?? "");
+    if (v) out[key] = v;
+  }
+  return out;
+}
+
+function rowHasMetafieldColumnsTouched(row, idx) {
+  for (const h of Object.keys(idx)) {
+    if (!keyPresent(row, h, idx)) continue;
+    if (/^metafield_\d+_(key|value)$/i.test(h)) return true;
+    if (/^variant_metafield_\d+_(key|value)$/i.test(h)) return true;
+  }
+  return false;
+}
+
+function computeParentPresent(parentRow, idx) {
+  const kp = (k) => keyPresent(parentRow, k, idx);
+  const sharedTitle = kp("title");
+  const sharedDescription = kp("description");
+  const sharedBullets = [kp("bullet1"), kp("bullet2"), kp("bullet3"), kp("bullet4"), kp("bullet5")];
+  const translations = {};
+  for (const lang of LANGS) {
+    translations[lang] = {
+      title: kp(`title_${lang}`) || sharedTitle,
+      description: kp(`description_${lang}`) || sharedDescription,
+      bullet1: kp(`bullet1_${lang}`) || sharedBullets[0],
+      bullet2: kp(`bullet2_${lang}`) || sharedBullets[1],
+      bullet3: kp(`bullet3_${lang}`) || sharedBullets[2],
+      bullet4: kp(`bullet4_${lang}`) || sharedBullets[3],
+      bullet5: kp(`bullet5_${lang}`) || sharedBullets[4],
+      seo_title: kp(`seo_title_${lang}`),
+      seo_description: kp(`seo_description_${lang}`),
+      seo_keywords: kp(`seo_keywords_${lang}`),
+    };
+  }
+  const imageSlot = {};
+  for (let n = 1; n <= 5; n++) imageSlot[n] = kp(`image_url_${n}`);
+  let hasOptionNames = false;
+  for (let n = 1; n <= 40; n++) {
+    if (kp(`option${n}_name`)) {
+      hasOptionNames = true;
+      break;
+    }
+  }
+  const metafieldTouched = rowHasMetafieldColumnsTouched(parentRow, idx);
+  return {
+    anyTitle: LANGS.some((l) => translations[l].title),
+    anyDesc: LANGS.some((l) => translations[l].description),
+    translations,
+    eurPriceTouched: eurPriceColumnsTouched(kp),
+    imageSlot,
+    status: kp("status"),
+    brand: kp("brand"),
+    category_slug: kp("category_slug"),
+    shipping_group: kp("shipping_group"),
+    hersteller: kp("hersteller"),
+    hersteller_information: kp("hersteller_information"),
+    verantwortliche_person_information: kp("verantwortliche_person_information"),
+    weee_number: kp("weee_number"),
+    eprel_number: kp("eprel_number"),
+    productFilesTouched: [1, 2, 3, 4, 5].some((n) => kp(`file_${n}_url`)),
+    type: kp("type"),
+    ean: kp("ean"),
+    weight_grams: kp("weight_grams"),
+    dim_length: kp("dim_length_cm"),
+    dim_width: kp("dim_width_cm"),
+    dim_height: kp("dim_height_cm"),
+    unit_type: kp("unit_type"),
+    unit_value: kp("unit_value"),
+    seo_title: kp("seo_title"),
+    seo_description: kp("seo_description"),
+    seo_keywords: kp("seo_keywords"),
+    hasOptionNames,
+    metafieldTouched,
+  };
+}
+
+function computeChildPresent(childRow, idx) {
+  const kp = (k) => keyPresent(childRow, k, idx);
+  const sharedTitle = kp("title");
+  const sharedDescription = kp("description");
+  const sharedBullets = [kp("bullet1"), kp("bullet2"), kp("bullet3"), kp("bullet4"), kp("bullet5")];
+  const opts = {};
+  for (let n = 1; n <= 40; n++) opts[n] = kp(`option${n}_value`);
+  const translations = {};
+  for (const lang of LANGS) {
+    translations[lang] = {
+      title: kp(`title_${lang}`) || sharedTitle,
+      description: kp(`description_${lang}`) || sharedDescription,
+      bullet1: kp(`bullet1_${lang}`) || sharedBullets[0],
+      bullet2: kp(`bullet2_${lang}`) || sharedBullets[1],
+      bullet3: kp(`bullet3_${lang}`) || sharedBullets[2],
+      bullet4: kp(`bullet4_${lang}`) || sharedBullets[3],
+      bullet5: kp(`bullet5_${lang}`) || sharedBullets[4],
+    };
+  }
+  const seo = {};
+  for (const lang of LANGS) {
+    seo[lang] = {
+      title: kp(`seo_title_${lang}`),
+      description: kp(`seo_description_${lang}`),
+      keywords: kp(`seo_keywords_${lang}`),
+    };
+  }
+  const variantMetafieldTouched = rowHasMetafieldColumnsTouched(childRow, idx);
+  return {
+    ean: kp("ean"),
+    inventory: kp("inventory"),
+    imageSlot: Object.fromEntries([1, 2, 3, 4, 5].map((n) => [n, kp(`image_url_${n}`)])),
+    translations,
+    brand: kp("brand"),
+    category_slug: kp("category_slug"),
+    shipping_group: kp("shipping_group"),
+    type: kp("type"),
+    weight_grams: kp("weight_grams"),
+    dim_length: kp("dim_length_cm"),
+    dim_width: kp("dim_width_cm"),
+    dim_height: kp("dim_height_cm"),
+    unit_type: kp("unit_type"),
+    unit_value: kp("unit_value"),
+    unit_reference: kp("unit_reference"),
+    eurPriceTouched: eurPriceColumnsTouched(kp),
+    seo,
+    variantMetafieldTouched,
+    opts,
+  };
+}
+
+function collectProductFiles(row, idx) {
+  const files = [];
+  for (let n = 1; n <= 5; n++) {
+    const urlCol = idx[`file_${n}_url`];
+    if (urlCol === undefined) continue;
+    const url = str(row[urlCol] ?? "");
+    if (!url) continue;
+    const nameCol = idx[`file_${n}_name`];
+    const rawName = nameCol !== undefined ? str(row[nameCol] ?? "") : "";
+    const name = rawName || url.split("/").pop().split("?")[0] || `Datei ${n}`;
+    files.push({ name, url });
+  }
+  return files.length ? files : undefined;
+}
+
+function collectImageSlotsFromRow(row, idx, getFn = null) {
+  const out = {};
+  for (let n = 1; n <= 5; n++) {
+    let v = "";
+    if (typeof getFn === "function") {
+      v = str(getFn(row, `image_url_${n}`));
+    } else {
+      const col = idx[`image_url_${n}`];
+      if (col === undefined) continue;
+      v = str(row[col]);
+    }
+    if (v) out[n] = v;
+  }
+  return out;
+}
+
+function normalizeVariants(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.map((x) => ({ ...x }));
+  if (typeof v === "string") {
+    try {
+      const p = JSON.parse(v);
+      return Array.isArray(p) ? p.map((x) => ({ ...x })) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function cloneDeep(x) {
+  if (x == null) return x;
+  try {
+    return JSON.parse(JSON.stringify(x));
+  } catch {
+    return x;
+  }
+}
+
+function mergeVariantArrays(existingVariants, incomingVariants, childRows, idx, get, parentRow) {
+  const optCount = countParentOptionNames(parentRow, (key) => get(parentRow, key));
+  const bySku = new Map();
+  for (const v of existingVariants || []) {
+    const k = str(v?.sku);
+    if (k) bySku.set(k, { ...v });
+  }
+  for (let i = 0; i < (incomingVariants || []).length; i++) {
+    const inv = incomingVariants[i];
+    const row = childRows[i];
+    if (!inv || !row) continue;
+    const sk = str(inv.sku);
+    if (!sk) continue;
+    const pres = computeChildPresent(row, idx);
+    const cur = bySku.get(sk);
+    if (!cur || !cur.sku) {
+      bySku.set(sk, { ...inv });
+      continue;
+    }
+    const out = { ...cur };
+    if (pres.ean) out.ean = inv.ean;
+    if (pres.inventory) out.inventory = inv.inventory ?? 0;
+    if (Object.values(pres.imageSlot || {}).some(Boolean)) {
+      if (inv.image_url) out.image_url = inv.image_url;
+      if (inv.image_urls) out.image_urls = inv.image_urls;
+      const invMedia = Array.isArray(inv.metadata?.media) ? inv.metadata.media : [];
+      if (invMedia.length) {
+        const md = out.metadata && typeof out.metadata === "object" ? { ...out.metadata } : {};
+        md.media = invMedia;
+        out.metadata = md;
+      }
+    }
+    const commonTouched =
+      pres.brand || pres.category_slug || pres.shipping_group || pres.type ||
+      pres.weight_grams || pres.dim_length || pres.dim_width || pres.dim_height ||
+      pres.unit_type || pres.unit_value || pres.unit_reference || pres.eurPriceTouched;
+    if (commonTouched) {
+      const md = out.metadata && typeof out.metadata === "object" ? { ...out.metadata } : {};
+      const invMd = inv.metadata && typeof inv.metadata === "object" ? inv.metadata : {};
+      if (pres.brand && invMd.brand_id) md.brand_id = invMd.brand_id;
+      if (pres.category_slug && invMd.category_id) md.category_id = invMd.category_id;
+      if (pres.category_slug && invMd.category_slug) md.category_slug = invMd.category_slug;
+      if (pres.shipping_group && invMd.shipping_group_id) md.shipping_group_id = invMd.shipping_group_id;
+      if (pres.type && invMd.type) md.type = invMd.type;
+      if (pres.weight_grams && invMd.weight_grams != null) md.weight_grams = invMd.weight_grams;
+      if (pres.dim_length && invMd.dimensions_length != null) md.dimensions_length = invMd.dimensions_length;
+      if (pres.dim_width && invMd.dimensions_width != null) md.dimensions_width = invMd.dimensions_width;
+      if (pres.dim_height && invMd.dimensions_height != null) md.dimensions_height = invMd.dimensions_height;
+      if (pres.unit_type && invMd.unit_type) md.unit_type = invMd.unit_type;
+      if (pres.unit_value && invMd.unit_value != null) md.unit_value = invMd.unit_value;
+      if (pres.unit_reference && invMd.unit_reference != null) md.unit_reference = invMd.unit_reference;
+      if (pres.eurPriceTouched && invMd.prices && typeof invMd.prices === "object") {
+        md.prices = { ...(md.prices && typeof md.prices === "object" ? md.prices : {}), ...invMd.prices };
+      }
+      out.metadata = md;
+    }
+    const seoTouched = LANGS.some((lang) => Object.values(pres.seo?.[lang] || {}).some(Boolean));
+    if (seoTouched) {
+      const md = out.metadata && typeof out.metadata === "object" ? { ...out.metadata } : {};
+      const tr = md.translations && typeof md.translations === "object" ? { ...md.translations } : {};
+      const invTr = inv.metadata?.translations && typeof inv.metadata.translations === "object" ? inv.metadata.translations : {};
+      for (const lang of LANGS) {
+        const s = pres.seo[lang] || {};
+        if (!Object.values(s).some(Boolean)) continue;
+        const prev = { ...(tr[lang] || {}) };
+        const src = invTr[lang] || {};
+        if (s.title) prev.seo_title = src.seo_title;
+        if (s.description) prev.seo_description = src.seo_description;
+        if (s.keywords) prev.seo_keywords = src.seo_keywords;
+        tr[lang] = prev;
+      }
+      md.translations = tr;
+      // Bridge German SEO to top-level variant metadata (VariantEditPage reads vm.seo_meta_title etc.)
+      if (tr.de?.seo_title) md.seo_meta_title = tr.de.seo_title;
+      if (tr.de?.seo_description) md.seo_meta_description = tr.de.seo_description;
+      if (tr.de?.seo_keywords) md.seo_keywords = tr.de.seo_keywords;
+      out.metadata = md;
+    }
+    const trTouched = LANGS.some((lang) => Object.values(pres.translations?.[lang] || {}).some(Boolean));
+    if (trTouched) {
+      const md = out.metadata && typeof out.metadata === "object" ? { ...out.metadata } : {};
+      const tr = md.translations && typeof md.translations === "object" ? { ...md.translations } : {};
+      const invTr = inv.metadata?.translations && typeof inv.metadata.translations === "object" ? inv.metadata.translations : {};
+      for (const lang of LANGS) {
+        const s = pres.translations?.[lang] || {};
+        if (!Object.values(s).some(Boolean)) continue;
+        const prev = { ...(tr[lang] || {}) };
+        const src = invTr[lang] || {};
+        if (s.title) prev.title = src.title;
+        if (s.description) prev.description = src.description;
+        if (s.bullet1 || s.bullet2 || s.bullet3 || s.bullet4 || s.bullet5) {
+          const next = Array.isArray(prev.bullet_points) ? [...prev.bullet_points] : [];
+          if (s.bullet1) next[0] = src.bullet_points?.[0] || "";
+          if (s.bullet2) next[1] = src.bullet_points?.[1] || "";
+          if (s.bullet3) next[2] = src.bullet_points?.[2] || "";
+          if (s.bullet4) next[3] = src.bullet_points?.[3] || "";
+          if (s.bullet5) next[4] = src.bullet_points?.[4] || "";
+          while (next.length && str(next[next.length - 1]) === "") next.pop();
+          if (next.length) prev.bullet_points = next;
+        }
+        tr[lang] = prev;
+      }
+      md.translations = tr;
+      // Bridge German translation fields to top-level variant metadata (VariantEditPage reads
+      // v.metadata.description and v.metadata.bullet_points for the DE locale)
+      if (tr.de?.description != null && tr.de.description !== "") md.description = tr.de.description;
+      if (Array.isArray(tr.de?.bullet_points) && tr.de.bullet_points.length) md.bullet_points = tr.de.bullet_points;
+      out.metadata = md;
+      if (tr.de?.title) out.title = tr.de.title;
+      if (tr.de?.description) out.description = tr.de.description;
+    }
+    if (pres.variantMetafieldTouched) {
+      const md = out.metadata && typeof out.metadata === "object" ? { ...out.metadata } : {};
+      const incomingMf = Array.isArray(inv.metadata?.metafields) ? inv.metadata.metafields : [];
+      if (incomingMf.length) {
+        const arr = Array.isArray(md.metafields) ? [...md.metafields] : [];
+        for (const pair of incomingMf) {
+          if (!pair?.key || !str(pair.value)) continue;
+          const j = arr.findIndex((x) => x && x.key === pair.key);
+          if (j >= 0) arr[j] = { ...arr[j], ...pair };
+          else arr.push({ ...pair });
+        }
+        md.metafields = arr;
+      }
+      out.metadata = md;
+    }
+    const touchedOpts = Object.entries(pres.opts).filter(([, on]) => on).map(([n]) => parseInt(n, 10));
+    if (touchedOpts.length) {
+      const nextOv = [...(Array.isArray(out.option_values) ? out.option_values : [])];
+      for (const n of touchedOpts) {
+        const val = str(get(row, `option${n}_value`));
+        if (val) {
+          while (nextOv.length < n) nextOv.push(undefined);
+          nextOv[n - 1] = val;
+        }
+      }
+      while (nextOv.length && nextOv[nextOv.length - 1] == null) nextOv.pop();
+      out.option_values = nextOv.length ? nextOv : out.option_values;
+    }
+    // If any price column is touched in Excel, update whatever price fields exist
+    // in the incoming variant. This allows UVP-only updates where `price_cents`
+    // is null but `compare_at_price_cents` is present.
+    if (pres.eurPriceTouched) {
+      if (inv.price_cents != null) out.price_cents = inv.price_cents;
+      if (inv.compare_at_price_cents != null) out.compare_at_price_cents = inv.compare_at_price_cents;
+    }
+    bySku.set(sk, out);
+  }
+  return [...bySku.values()];
+}
+
+/** Merge Excel row into existing product: only columns filled in the sheet overwrite DB fields */
+function mergeImportIntoExisting(existing, payload, parentPresent, parentRow, childRows, idx, get) {
+  const G = (key) => get(parentRow, key);
+  const out = {
+    title: existing.title || "",
+    description: existing.description ?? null,
+    status: existing.status || "draft",
+    sku: existing.sku,
+    metadata: cloneDeep(existing.metadata) || {},
+    variants: normalizeVariants(existing.variants),
+  };
+
+  if (parentPresent.anyTitle) {
+    const te = str(payload.title);
+    if (te) out.title = te;
+  }
+  if (parentPresent.anyDesc) {
+    const d = payload.description;
+    if (d != null && str(d) !== "") out.description = String(d);
+  }
+  if (parentPresent.status) {
+    const s = G("status");
+    if (s) out.status = s;
+  }
+
+  const m = out.metadata;
+  const pm = payload.metadata || {};
+
+  m.translations = m.translations && typeof m.translations === "object" ? cloneDeep(m.translations) : {};
+  for (const lang of LANGS) {
+    const tp = parentPresent.translations[lang];
+    if (!tp || !Object.values(tp).some(Boolean)) continue;
+    const prev = { ...(m.translations[lang] || {}) };
+    if (tp.title) {
+      const t = G(`title_${lang}`) || G("title");
+      if (t) prev.title = t;
+    }
+    if (tp.description) {
+      const d = G(`description_${lang}`) || G("description");
+      if (d) prev.description = d;
+    }
+    if (tp.bullet1 || tp.bullet2 || tp.bullet3 || tp.bullet4 || tp.bullet5) {
+      const next = Array.isArray(prev.bullet_points) ? [...prev.bullet_points] : [];
+      if (tp.bullet1) next[0] = G(`bullet1_${lang}`) || G("bullet1");
+      if (tp.bullet2) next[1] = G(`bullet2_${lang}`) || G("bullet2");
+      if (tp.bullet3) next[2] = G(`bullet3_${lang}`) || G("bullet3");
+      if (tp.bullet4) next[3] = G(`bullet4_${lang}`) || G("bullet4");
+      if (tp.bullet5) next[4] = G(`bullet5_${lang}`) || G("bullet5");
+      while (next.length && str(next[next.length - 1]) === "") next.pop();
+      prev.bullet_points = next.length ? next : undefined;
+    }
+    if (tp.seo_title) {
+      const v = G(`seo_title_${lang}`);
+      if (v) prev.seo_title = v;
+    }
+    if (tp.seo_description) {
+      const v = G(`seo_description_${lang}`);
+      if (v) prev.seo_description = v;
+    }
+    if (tp.seo_keywords) {
+      const v = G(`seo_keywords_${lang}`);
+      if (v) prev.seo_keywords = v;
+    }
+    m.translations[lang] = prev;
+  }
+
+  // Bridge DE SEO translations into top-level meta fields.
+  // ProductEditPage reads `metadata.seo_meta_*`, not `metadata.translations[de].seo_*`.
+  const deTr = m.translations?.de;
+  if (deTr?.seo_title) m.seo_meta_title = deTr.seo_title;
+  if (deTr?.seo_description) m.seo_meta_description = deTr.seo_description;
+  if (deTr?.seo_keywords) m.seo_keywords = deTr.seo_keywords;
+
+  if (parentPresent.eurPriceTouched && pm.prices && typeof pm.prices === "object") {
+    m.prices = { ...(m.prices && typeof m.prices === "object" ? m.prices : {}), ...pm.prices };
+  }
+  if (m.prices && !Object.keys(m.prices).length) delete m.prices;
+
+  const anyImgSlot = Object.values(parentPresent.imageSlot).some(Boolean);
+  if (anyImgSlot) {
+    const base = Array.isArray(m.media)
+      ? m.media.map((x) => (typeof x === "string" ? str(x) : str(x?.url))).filter((x) => x)
+      : [];
+    let maxI = base.length;
+    for (let n = 1; n <= 5; n++) {
+      if (parentPresent.imageSlot[n] && str(G(`image_url_${n}`))) maxI = Math.max(maxI, n);
+    }
+    const next = [];
+    for (let i = 1; i <= maxI; i++) {
+      if (parentPresent.imageSlot[i]) {
+        const url = G(`image_url_${i}`);
+        if (str(url)) next.push(str(url));
+        else if (i <= base.length && base[i - 1]) next.push(base[i - 1]);
+      } else if (i <= base.length && base[i - 1]) {
+        next.push(base[i - 1]);
+      }
+    }
+    if (next.length) m.media = next;
+  }
+
+  // Union-merge (not overwrite): a later import batch touching only some rows of an
+  // existing product must not drop option values that earlier imports already
+  // registered, and must not need to re-list every historical value to keep them.
+  // Matches by group name (case-insensitive) and, within a group, by option value
+  // (case-insensitive) — existing swatch_image/labels are preserved, only genuinely
+  // new values are appended. Without this, variants[] and variation_groups can
+  // silently drift apart across repeated imports (seen in production: a product had
+  // 36 variants spanning 9 colors, but variation_groups only listed 1).
+  if (parentPresent.hasOptionNames && pm.variation_groups?.length) {
+    const existingGroups = Array.isArray(m.variation_groups) ? m.variation_groups : [];
+    const merged = existingGroups.map((g) => ({
+      name: g?.name || "",
+      options: Array.isArray(g?.options) ? g.options.map((o) => ({ ...o })) : [],
+    }));
+    for (const incoming of pm.variation_groups) {
+      const incomingName = String(incoming?.name || "").trim();
+      let target = merged.find((g) => g.name.trim().toLowerCase() === incomingName.toLowerCase());
+      if (!target) {
+        target = { name: incomingName, options: [] };
+        merged.push(target);
+      }
+      const seen = new Set(target.options.map((o) => String(o?.value ?? "").trim().toLowerCase()).filter(Boolean));
+      for (const opt of incoming.options || []) {
+        const val = String(opt?.value ?? "").trim();
+        if (!val) continue;
+        const key = val.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        target.options.push({ ...opt, value: val });
+      }
+    }
+    m.variation_groups = merged;
+  }
+
+  if (parentPresent.seo_title && pm.seo_meta_title) m.seo_meta_title = pm.seo_meta_title;
+  if (parentPresent.seo_description && pm.seo_meta_description) m.seo_meta_description = pm.seo_meta_description;
+  if (parentPresent.seo_keywords && pm.seo_keywords) m.seo_keywords = pm.seo_keywords;
+
+  if (parentPresent.ean && pm.ean) m.ean = pm.ean;
+  if (parentPresent.weight_grams && pm.weight_grams != null) m.weight_grams = pm.weight_grams;
+  if (parentPresent.dim_length && pm.dimensions_length != null) m.dimensions_length = pm.dimensions_length;
+  if (parentPresent.dim_width && pm.dimensions_width != null) m.dimensions_width = pm.dimensions_width;
+  if (parentPresent.dim_height && pm.dimensions_height != null) m.dimensions_height = pm.dimensions_height;
+  if (parentPresent.unit_type && pm.unit_type) m.unit_type = pm.unit_type;
+  if (parentPresent.unit_value && pm.unit_value != null) m.unit_value = pm.unit_value;
+  if (parentPresent.unit_type && pm.unit_reference != null) m.unit_reference = pm.unit_reference;
+
+  if (parentPresent.brand && pm.brand_id) m.brand_id = pm.brand_id;
+  if (parentPresent.category_slug) {
+    if (pm.category_id) m.category_id = pm.category_id;
+    if (pm.category_slug) m.category_slug = pm.category_slug;
+  }
+  if (parentPresent.shipping_group && pm.shipping_group_id) m.shipping_group_id = pm.shipping_group_id;
+  if (parentPresent.hersteller && pm.hersteller) m.hersteller = pm.hersteller;
+  if (parentPresent.hersteller_information && pm.hersteller_information) m.hersteller_information = pm.hersteller_information;
+  if (parentPresent.verantwortliche_person_information && pm.verantwortliche_person_information) {
+    m.verantwortliche_person_information = pm.verantwortliche_person_information;
+  }
+  if (parentPresent.weee_number && pm.weee_number) m.weee_number = pm.weee_number;
+  if (parentPresent.eprel_number && pm.eprel_number) m.eprel_number = pm.eprel_number;
+  if (pm && typeof pm === "object") {
+    const structural = new Set([
+      "translations", "prices", "media", "ean", "weight_grams",
+      "dimensions_length", "dimensions_width", "dimensions_height",
+      "unit_type", "unit_value", "unit_reference", "variation_groups",
+      "seo_meta_title", "seo_meta_description", "seo_keywords",
+      "hersteller", "hersteller_information", "verantwortliche_person_information",
+      "weee_number", "eprel_number", "product_files", "metafields",
+      "brand_id", "category_id", "category_slug", "shipping_group_id", "type",
+    ]);
+    for (const [k, v] of Object.entries(pm)) {
+      if (structural.has(k) || v == null || v === "") continue;
+      if (typeof v !== "string") continue;
+      if (!/^[a-z][a-z0-9_]{0,80}$/.test(k)) continue;
+      m[k] = v;
+    }
+  }
+  if (parentPresent.productFilesTouched && Array.isArray(pm.product_files)) m.product_files = pm.product_files;
+  if (parentPresent.type && pm.type) m.type = pm.type;
+
+  if (parentPresent.metafieldTouched && Array.isArray(pm.metafields)) {
+    const arr = Array.isArray(m.metafields) ? [...m.metafields] : [];
+    for (const pair of pm.metafields) {
+      if (!pair?.key || !str(pair.value)) continue;
+      const j = arr.findIndex((x) => x && x.key === pair.key);
+      if (j >= 0) arr[j] = { ...arr[j], ...pair };
+      else arr.push({ ...pair });
+    }
+    m.metafields = arr;
+  }
+
+  const hasChildRows = childRows && childRows.length > 0;
+  if (hasChildRows && Array.isArray(payload.variants) && payload.variants.length) {
+    out.variants = mergeVariantArrays(out.variants, payload.variants, childRows, idx, get, parentRow);
+  }
+
+  return out;
+}
+
+function buildProductPayload(parentRow, childRows, headers, idx, get, lookups, msg) {
+  const G = (key) => get(parentRow, key);
+  const { slugToId, brandByLowerName, shipByLowerName, metafieldLookup } = lookups;
+
+  const translations = {};
+  const sharedTitle = G("title");
+  const sharedDesc = G("description");
+  const sharedBullets = [G("bullet1"), G("bullet2"), G("bullet3"), G("bullet4"), G("bullet5")];
+  for (const lang of LANGS) {
+    const title = G(`title_${lang}`) || sharedTitle;
+    const desc = G(`description_${lang}`) || sharedDesc;
+    const b1 = G(`bullet1_${lang}`) || sharedBullets[0];
+    const b2 = G(`bullet2_${lang}`) || sharedBullets[1];
+    const b3 = G(`bullet3_${lang}`) || sharedBullets[2];
+    const b4 = G(`bullet4_${lang}`) || sharedBullets[3];
+    const b5 = G(`bullet5_${lang}`) || sharedBullets[4];
+    const seoTitleLang = G(`seo_title_${lang}`);
+    const seoDescLang = G(`seo_description_${lang}`);
+    const seoKeywordsLang = G(`seo_keywords_${lang}`);
+    if (!title && !desc && !b1 && !b2 && !b3 && !b4 && !b5 && !seoTitleLang && !seoDescLang && !seoKeywordsLang) continue;
+    translations[lang] = {};
+    if (title) translations[lang].title = title;
+    if (desc) translations[lang].description = desc;
+    const bullets = [];
+    if (b1) bullets.push(b1);
+    if (b2) bullets.push(b2);
+    if (b3) bullets.push(b3);
+    if (b4) bullets.push(b4);
+    if (b5) bullets.push(b5);
+    if (bullets.length) translations[lang].bullet_points = bullets;
+    if (seoTitleLang) translations[lang].seo_title = seoTitleLang;
+    if (seoDescLang) translations[lang].seo_description = seoDescLang;
+    if (seoKeywordsLang) translations[lang].seo_keywords = seoKeywordsLang;
+  }
+
+  const prices = collectEurPriceBlock(G);
+
+  const media = [1, 2, 3, 4, 5].map((n) => G(`image_url_${n}`)).filter(Boolean);
+
+  const optCount = countParentOptionNames(parentRow, get);
+  const variationGroups = buildVariationGroups(parentRow, childRows, get, optCount, metafieldLookup);
+
+  const variants = [];
+  for (const cRow of childRows || []) {
+    const cGet = (key) => get(cRow, key);
+    const option_values = [];
+    for (let n = 1; n <= optCount; n++) {
+      const optName = str(get(parentRow, `option${n}_name`));
+      const key = resolveImportedMetaKey(optName, metafieldLookup);
+      const v = resolveImportedMetaValue(key, str(cGet(`option${n}_value`)), metafieldLookup);
+      if (v) option_values.push(v);
+    }
+    const variantTranslations = {};
+    for (const lang of LANGS) {
+      const vTitle = cGet(`title_${lang}`) || cGet("title");
+      const vDescription = cGet(`description_${lang}`) || cGet("description");
+      const vb1 = cGet(`bullet1_${lang}`) || cGet("bullet1");
+      const vb2 = cGet(`bullet2_${lang}`) || cGet("bullet2");
+      const vb3 = cGet(`bullet3_${lang}`) || cGet("bullet3");
+      const vb4 = cGet(`bullet4_${lang}`) || cGet("bullet4");
+      const vb5 = cGet(`bullet5_${lang}`) || cGet("bullet5");
+      const seoTitle = cGet(`seo_title_${lang}`);
+      const seoDescription = cGet(`seo_description_${lang}`);
+      const seoKeywords = cGet(`seo_keywords_${lang}`);
+      if (!vTitle && !vDescription && !vb1 && !vb2 && !vb3 && !vb4 && !vb5 && !seoTitle && !seoDescription && !seoKeywords) continue;
+      variantTranslations[lang] = {};
+      if (vTitle) variantTranslations[lang].title = vTitle;
+      if (vDescription) variantTranslations[lang].description = vDescription;
+      const vBullets = [vb1, vb2, vb3, vb4, vb5].filter(Boolean);
+      if (vBullets.length) variantTranslations[lang].bullet_points = vBullets;
+      if (seoTitle) variantTranslations[lang].seo_title = seoTitle;
+      if (seoDescription) variantTranslations[lang].seo_description = seoDescription;
+      if (seoKeywords) variantTranslations[lang].seo_keywords = seoKeywords;
+    }
+    const variantMetafields = resolveMetafieldPairs(collectRowMetafields(cRow, headers, idx), metafieldLookup);
+    const variantMeta = {};
+    if (Object.keys(variantTranslations).length) variantMeta.translations = variantTranslations;
+    if (variantMetafields?.length) variantMeta.metafields = variantMetafields;
+    // Bridge German translations to top-level variant metadata fields (VariantEditPage reads
+    // v.metadata.description / bullet_points / seo_meta_title etc. for the DE locale)
+    const deTrans = variantTranslations["de"];
+    if (deTrans) {
+      if (deTrans.description) variantMeta.description = deTrans.description;
+      if (Array.isArray(deTrans.bullet_points) && deTrans.bullet_points.length) variantMeta.bullet_points = deTrans.bullet_points;
+      if (deTrans.seo_title) variantMeta.seo_meta_title = deTrans.seo_title;
+      if (deTrans.seo_description) variantMeta.seo_meta_description = deTrans.seo_description;
+      if (deTrans.seo_keywords) variantMeta.seo_keywords = deTrans.seo_keywords;
+    }
+    const cImageSlots = collectImageSlotsFromRow(cRow, idx, get);
+    const cImage = cImageSlots[1] || "";
+    const cBrand = str(cGet("brand"));
+    const cBrandRef = cBrand ? brandByLowerName.get(cBrand.toLowerCase()) : null;
+    if (cBrand && !cBrandRef) {
+      return { error: msg.unknownBrandChild(cBrand) };
+    }
+    const cCatSlug = str(cGet("category_slug"));
+    const cCatId = cCatSlug ? slugToId.get(cCatSlug.toLowerCase()) : null;
+    if (cCatSlug && !cCatId) {
+      return { error: msg.unknownCategoryChild(cCatSlug) };
+    }
+    const cShip = str(cGet("shipping_group"));
+    const cShipRef = cShip ? shipByLowerName.get(cShip.toLowerCase()) : null;
+    if (cShip && !cShipRef) {
+      return { error: msg.unknownShippingChild(cShip) };
+    }
+    const cPrices = collectEurPriceBlock(cGet);
+    if (cBrandRef?.id) variantMeta.brand_id = cBrandRef.id;
+    if (cCatId) variantMeta.category_id = cCatId;
+    if (cCatSlug) variantMeta.category_slug = cCatSlug;
+    if (cShipRef?.id) variantMeta.shipping_group_id = cShipRef.id;
+    if (str(cGet("type"))) variantMeta.type = str(cGet("type"));
+    if (parseNum(cGet("weight_grams")) != null) variantMeta.weight_grams = parseNum(cGet("weight_grams"));
+    if (parseNum(cGet("dim_length_cm")) != null) variantMeta.dimensions_length = parseNum(cGet("dim_length_cm"));
+    if (parseNum(cGet("dim_width_cm")) != null) variantMeta.dimensions_width = parseNum(cGet("dim_width_cm"));
+    if (parseNum(cGet("dim_height_cm")) != null) variantMeta.dimensions_height = parseNum(cGet("dim_height_cm"));
+    if (str(cGet("unit_type"))) variantMeta.unit_type = str(cGet("unit_type"));
+    if (parseNum(cGet("unit_value")) != null) variantMeta.unit_value = parseNum(cGet("unit_value"));
+    // In case the Excel child row doesn't include unit fields, inherit them from the parent row.
+    if (!variantMeta.unit_type && str(G("unit_type"))) variantMeta.unit_type = str(G("unit_type"));
+    if (variantMeta.unit_value == null && parseNum(G("unit_value")) != null) variantMeta.unit_value = parseNum(G("unit_value"));
+    const childPerUnit = parseNum(cGet("per_unit") || cGet("unit_reference"));
+    const parentPerUnit = parseNum(G("per_unit") || G("unit_reference"));
+    if (variantMeta.unit_reference == null && childPerUnit != null) variantMeta.unit_reference = childPerUnit;
+    if (variantMeta.unit_reference == null && parentPerUnit != null) variantMeta.unit_reference = parentPerUnit;
+    if (variantMeta.unit_type && variantMeta.unit_reference == null) variantMeta.unit_reference = computeUnitReference(variantMeta.unit_type);
+    if (Object.keys(cPrices).length) variantMeta.prices = cPrices;
+    const cGallery = Object.values(cImageSlots).filter(Boolean);
+    if (cGallery.length) variantMeta.media = cGallery;
+    const eurBlock = cPrices[EUR_PRICE_KEY] || cPrices.DE || {};
+    const eurBrutto = eurBlock.brutto_cents != null ? Number(eurBlock.brutto_cents) : null;
+    const eurUvp = eurBlock.uvp_cents != null ? Number(eurBlock.uvp_cents) : null;
+    variants.push({
+      sku: cGet("sku") || undefined,
+      ean: cGet("ean") || undefined,
+      inventory: parseNum(cGet("inventory")) ?? 0,
+      title: cGet("title_de") || cGet("title") || (option_values.length ? option_values.join(" / ") : undefined),
+      description: cGet("description_de") || cGet("description") || undefined,
+      option_values: option_values.length ? option_values : undefined,
+      image_url: cImage || undefined,
+      image_urls: cImage ? Object.fromEntries(LANGS.map((l) => [l, cImage])) : undefined,
+      ...(eurBrutto != null ? { price_cents: eurBrutto, price: Number((eurBrutto / 100).toFixed(2)) } : {}),
+      ...(eurUvp != null ? { compare_at_price_cents: eurUvp } : {}),
+      metadata: Object.keys(variantMeta).length ? variantMeta : undefined,
+    });
+  }
+
+  const metafields = resolveMetafieldPairs(collectRowMetafields(parentRow, headers, idx), metafieldLookup);
+
+  const meta = {
+    translations: Object.keys(translations).length ? translations : undefined,
+    prices: Object.keys(prices).length ? prices : undefined,
+    media: media.length ? media : undefined,
+    ean: G("ean") || undefined,
+    weight_grams: parseNum(G("weight_grams")),
+    dimensions_length: parseNum(G("dim_length_cm")),
+    dimensions_width: parseNum(G("dim_width_cm")),
+    dimensions_height: parseNum(G("dim_height_cm")),
+    unit_type: G("unit_type") || undefined,
+    unit_value: parseNum(G("unit_value")),
+    unit_reference: (() => {
+      const per = parseNum(G("per_unit") || G("unit_reference"));
+      if (per != null) return per;
+      const ut = G("unit_type");
+      if (!ut) return undefined;
+      return computeUnitReference(ut);
+    })(),
+    variation_groups: variationGroups.length ? variationGroups : undefined,
+    // ProductEditPage reads top-level `metadata.seo_meta_*`.
+    // Template/import uses `seo_title_{lang}` / `seo_description_{lang}` / `seo_keywords_{lang}` instead,
+    // so we bridge DE values to the top-level fields.
+    seo_meta_title: (translations.de?.seo_title || G("seo_title") || undefined),
+    seo_meta_description: (translations.de?.seo_description || G("seo_description") || undefined),
+    seo_keywords: (translations.de?.seo_keywords || G("seo_keywords") || undefined),
+    hersteller: G("hersteller") || undefined,
+    hersteller_information: G("hersteller_information") || undefined,
+    verantwortliche_person_information: G("verantwortliche_person_information") || undefined,
+    weee_number: G("weee_number") || undefined,
+    eprel_number: G("eprel_number") || undefined,
+    ...collectComplianceExtras(parentRow, idx),
+    ...((() => { const pf = collectProductFiles(parentRow, idx); return pf ? { product_files: pf } : {}; })()),
+    ...(metafields ? { metafields } : {}),
+  };
+
+  const firstTitle = G("title") || LANGS.map((lang) => G(`title_${lang}`)).find(Boolean);
+  const firstDesc = G("description") || LANGS.map((lang) => G(`description_${lang}`)).find(Boolean);
+  const payload = {
+    title: firstTitle || undefined,
+    description: firstDesc || undefined,
+    status: G("status") || "draft",
+    sku: G("sku") || undefined,
+    metadata: meta,
+    variants: variants.length ? variants : undefined,
+  };
+
+  const brandName = G("brand");
+  if (brandName) {
+    const b = brandByLowerName.get(brandName.toLowerCase());
+    if (!b) {
+      return { error: msg.unknownBrand(brandName) };
+    }
+    payload.metadata.brand_id = b.id;
+  }
+
+  const catSlug = G("category_slug");
+  if (catSlug) {
+    const id = slugToId.get(catSlug.toLowerCase());
+    if (!id) {
+      return { error: msg.unknownCategory(catSlug) };
+    }
+    payload.metadata.category_id = id;
+    payload.metadata.category_slug = catSlug;
+  }
+
+  const shipN = G("shipping_group");
+  if (shipN) {
+    const g = shipByLowerName.get(shipN.toLowerCase());
+    if (!g) {
+      return { error: msg.unknownShipping(shipN) };
+    }
+    payload.metadata.shipping_group_id = g.id;
+  }
+
+  const type = G("type");
+  if (type) payload.metadata.type = type;
+
+  return { payload };
+}
+
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
+const ALLOWED_XLSX_MIME = new Set([
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/octet-stream", // some browsers / OS send this for .xlsx
+]);
+const XLSX_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]); // PK\x03\x04 (ZIP header)
+
+function validateXlsxFile(file, buf) {
+  // 1. Extension
+  const name = typeof file.name === "string" ? file.name.toLowerCase() : "";
+  if (!name.endsWith(".xlsx")) {
+    return "Only .xlsx files are allowed.";
+  }
+  // 2. MIME type (browsers may send octet-stream for xlsx — accept both)
+  const mime = (file.type || "").toLowerCase();
+  if (mime && !ALLOWED_XLSX_MIME.has(mime)) {
+    return "Invalid file type. Please upload an .xlsx file.";
+  }
+  // 3. Size
+  if (buf.length > MAX_UPLOAD_BYTES) {
+    return `File too large. Maximum allowed size is ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`;
+  }
+  // 4. Magic bytes — confirms the file is actually a ZIP/XLSX regardless of extension
+  if (buf.length < 4 || !buf.slice(0, 4).equals(XLSX_MAGIC)) {
+    return "File does not appear to be a valid .xlsx file.";
+  }
+  return null; // valid
+}
+
+export async function POST(request) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get("file");
+    const sellerToken = formData.get("sellerToken") || "";
+    const localeRaw = formData.get("locale");
+    const locale = localeRaw
+      ? String(localeRaw).slice(0, 2).toLowerCase()
+      : resolveRequestLocale(request);
+    const msg = getImportApiMessages(locale);
+    const backendUrl = getBackendBase();
+
+    if (!file || typeof file === "string") {
+      return Response.json({ error: msg.noFile }, { status: 400 });
+    }
+
+    const buf = Buffer.from(await file.arrayBuffer());
+
+    const fileError = validateXlsxFile(file, buf);
+    if (fileError) {
+      return Response.json({ error: fileError }, { status: 400 });
+    }
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+
+    const ws = wb.getWorksheet("Products") || wb.worksheets[0];
+    if (!ws) return Response.json({ error: msg.sheetNotFound }, { status: 400 });
+
+    const headerRow = ws.getRow(2);
+    const headers = [];
+    let maxCol = 0;
+    headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      maxCol = Math.max(maxCol, colNumber);
+    });
+    for (let c = 1; c <= maxCol; c++) {
+      const cell = headerRow.getCell(c);
+      headers.push(str(cell.value));
+    }
+
+    const dataRows = normalizeDataRows(ws, headers.length);
+
+    if (dataRows.length === 0) {
+      return Response.json({ error: msg.noDataRows }, { status: 400 });
+    }
+
+    const { parents, children, idx, get, errors: groupErrors } = groupRows(dataRows, headers);
+
+    if (parents.size === 0) {
+      return Response.json({ error: msg.noParentRows }, { status: 400 });
+    }
+    if (groupErrors.length) {
+      return Response.json({ error: msg.validationFailed, errors: groupErrors }, { status: 400 });
+    }
+
+    const lookups = await loadImportLookups(backendUrl, sellerToken);
+
+    const results = { created: 0, updated: 0, failed: 0, errors: [] };
+    const authHeaders = sellerToken ? { Authorization: `Bearer ${sellerToken}` } : {};
+    const collectedImageUrls = new Set();
+
+    // Collect every image URL first — ingest to R2/disk BEFORE writing products so catalog
+    // stores hosted URLs, not hotlinks.
+    for (const [sku, parentRow] of parents) {
+      void sku;
+      for (let n = 1; n <= 5; n++) {
+        const u = get(parentRow, `image_url_${n}`);
+        if (u && /^https?:\/\//i.test(u)) collectedImageUrls.add(String(u).trim());
+      }
+      for (const cRow of children.get(sku) || []) {
+        for (let n = 1; n <= 5; n++) {
+          const u = get(cRow, `image_url_${n}`);
+          if (u && /^https?:\/\//i.test(u)) collectedImageUrls.add(String(u).trim());
+        }
+        const sw = get(cRow, "swatch_image_url");
+        if (sw && /^https?:\/\//i.test(sw)) collectedImageUrls.add(String(sw).trim());
+      }
+    }
+
+    let mediaResult = null;
+    let imageUrlMap = {};
+    if (collectedImageUrls.size > 0 && sellerToken) {
+      mediaResult = await registerImportedMediaUrls(backendUrl, authHeaders, [...collectedImageUrls], null);
+      imageUrlMap = mediaResult?.url_map || {};
+    }
+    const getMapped = wrapGetWithImageUrlMap(get, imageUrlMap);
+
+    for (const [sku, parentRow] of parents) {
+      const childRows = children.get(sku) || [];
+      const built = buildProductPayload(parentRow, childRows, headers, idx, getMapped, lookups, msg);
+      if (built.error) {
+        results.failed++;
+        results.errors.push({ sku, error: built.error });
+        continue;
+      }
+      const { payload } = built;
+      const parentPresent = computeParentPresent(parentRow, idx);
+      let existingProduct = null;
+      try {
+        const listUrl = `${backendUrl}/admin-hub/products?sku=${encodeURIComponent(sku)}&limit=10`;
+        const lr = await fetch(listUrl, { headers: { "Content-Type": "application/json", ...authHeaders, cache: "no-store" } });
+        if (lr.ok) {
+          const lj = await lr.json();
+          const rows = lj.products || [];
+          existingProduct = rows.find((p) => str(p.sku).toLowerCase() === str(sku).toLowerCase()) || null;
+        }
+      } catch (_) {}
+
+      if (existingProduct?.id) {
+        try {
+          const body = mergeImportIntoExisting(existingProduct, payload, parentPresent, parentRow, childRows, idx, getMapped);
+          const res = await fetch(`${backendUrl}/admin-hub/products/${existingProduct.id}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeaders,
+            },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ message: res.statusText }));
+            // If full PUT failed due to GPSR validation but we have variant data, try variant-only PATCH
+            // This allows updating variant translations for products that lack GPSR fields
+            const isGpsrError = err?.message && String(err.message).toLowerCase().includes("gpsr");
+            if (isGpsrError && Array.isArray(body.variants) && body.variants.length > 0) {
+              try {
+                const vRes = await fetch(`${backendUrl}/admin-hub/products/${existingProduct.id}/variants`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json", ...authHeaders },
+                  body: JSON.stringify({ variants: body.variants }),
+                });
+                if (vRes.ok) {
+                  results.updated++;
+                  results.errors.push({ sku, error: msg.gpsrWarning(err.message) });
+                  continue;
+                }
+              } catch (_) {}
+            }
+            results.failed++;
+            results.errors.push({ sku, error: err?.message || `HTTP ${res.status}` });
+          } else {
+            results.updated++;
+          }
+        } catch (e) {
+          results.failed++;
+          results.errors.push({ sku, error: e.message });
+        }
+        continue;
+      }
+
+      if (!payload.title) {
+        results.failed++;
+        results.errors.push({ sku, error: msg.missingTitle });
+        continue;
+      }
+
+      try {
+        const res = await fetch(`${backendUrl}/admin-hub/products`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ message: res.statusText }));
+          results.failed++;
+          results.errors.push({ sku, error: err?.message || `HTTP ${res.status}` });
+        } else {
+          results.created++;
+        }
+      } catch (e) {
+        results.failed++;
+        results.errors.push({ sku, error: e.message });
+      }
+    }
+
+    return Response.json({
+      ok: true,
+      total: parents.size,
+      created: results.created,
+      updated: results.updated,
+      failed: results.failed,
+      errors: results.errors,
+      media: mediaResult
+        ? {
+            registered: mediaResult.registered,
+            skipped: mediaResult.skipped,
+            folder: mediaResult.folder || null,
+            errors: Array.isArray(mediaResult.errors) ? mediaResult.errors : [],
+            ingested: Object.keys(imageUrlMap).filter((k) => imageUrlMap[k] && imageUrlMap[k] !== k).length,
+          }
+        : null,
+    });
+  } catch (e) {
+    console.error("Import error:", e);
+    return Response.json({ error: e.message || msg.importFailed }, { status: 500 });
+  }
+}

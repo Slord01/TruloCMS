@@ -1,0 +1,30 @@
+import { headers } from "next/headers";
+import {
+  buildPageMetadata,
+  marketFromHeader,
+} from "@/lib/seo";
+import { catalogCmsSeo, fetchCatalogCmsPage } from "@/lib/catalog-cms-page";
+
+export async function generateMetadata({ params }) {
+  const { locale } = await params;
+  const h = await headers();
+  const market = marketFromHeader(h.get("x-trulo-market-prefix"), locale);
+  const page = await fetchCatalogCmsPage("brands", { revalidate: 0 });
+  const fallback = { de: "Marken", en: "Brands", tr: "Markalar", fr: "Marques", es: "Marcas", it: "Marchi" }[locale] || "Brands";
+  const seo = catalogCmsSeo(page, locale, fallback);
+  const title = (seo.title || fallback).trim() || "Trulo";
+  return {
+    ...buildPageMetadata({
+      title,
+      description: seo.description,
+      market,
+      locale,
+      path: "brands",
+    }),
+    ...(seo.keywords?.length ? { keywords: seo.keywords } : {}),
+  };
+}
+
+export default function BrandsLayout({ children }) {
+  return children;
+}
