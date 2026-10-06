@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import ExcelJS from "exceljs";
 import { dateLocaleFor } from "@/lib/locale-text";
 import {
@@ -10,7 +11,7 @@ import { buildSimpleTablePdfBuffer } from "@/lib/simple-table-pdf";
 const DEFAULT_BACKEND = "http://localhost:9000";
 
 function getBackendBase() {
-  return (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, "");
+  return getCmsBackendUrl().replace(/\/$/, "");
 }
 
 async function fetchJson(url, init = {}) {

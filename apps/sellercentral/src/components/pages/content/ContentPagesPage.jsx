@@ -38,7 +38,7 @@ function setPageI18nField(i18nObj, field, lang, value) {
   return { ...(i18nObj || {}), [lang]: { ...(i18nObj?.[lang] || {}), [field]: value } };
 }
 
-const BACKEND_URL = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+const BACKEND_URL = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/api/cms").replace(/\/$/, "");
 
 function resolveFeaturedImageUrl(url) {
   if (!url || typeof url !== "string") return "";

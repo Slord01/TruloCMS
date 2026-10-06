@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useLocale } from "next-intl";
 
-const BACKEND_URL = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+const BACKEND_URL = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/api/cms").replace(/\/$/, "");
 
 const LABELS = {
   de: {

@@ -28,7 +28,7 @@ import { getCollectionEditCopy } from "@/lib/collection-edit-i18n";
 const getDefaultBaseUrl = () => {
   const env = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "";
   const url = (typeof env === "string" ? env : "").trim();
-  return url || (typeof window !== "undefined" ? "http://localhost:9000" : "");
+  return url || (typeof window !== "undefined" ? "/api/cms" : "");
 };
 
 function descriptionVisualToHtml(html) {

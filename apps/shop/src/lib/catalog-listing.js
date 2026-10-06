@@ -273,7 +273,7 @@ export const DEFAULT_SALE_MIN_DISCOUNT_PERCENT = 0;
 
 export async function loadCatalogBadgeRules() {
   try {
-    const res = await fetch("/api/store-seller-settings?seller_id=default", { cache: "no-store" });
+    const res = await fetch("/shop/api/store-seller-settings?seller_id=default", { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
     const minSold = Number(data?.bestseller_min_sold);
     const salePct = Number(data?.sale_min_discount_percent);
@@ -291,7 +291,7 @@ export const DEFAULT_NEW_PRODUCT_WINDOW_DAYS = 15;
 /** Neu window from seller settings (Inventory, superuser). Falls back to 15 days. */
 export async function loadNewProductWindowDays() {
   try {
-    const res = await fetch("/api/store-seller-settings?seller_id=default", { cache: "no-store" });
+    const res = await fetch("/shop/api/store-seller-settings?seller_id=default", { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
     const n = Number(data?.new_product_window_days);
     if (Number.isFinite(n) && n >= 1) return Math.min(3650, Math.round(n));

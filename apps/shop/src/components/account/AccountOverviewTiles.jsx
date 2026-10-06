@@ -130,7 +130,7 @@ export default function AccountOverviewTiles({ customer, email, latestOrder, lat
   useEffect(() => {
     if (!email) return;
     let cancelled = false;
-    const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000";
+    const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms";
     fetch(`${backendUrl}/store/messages/unread-count?email=${encodeURIComponent(email)}`)
       .then((r) => r.json())
       .then((d) => { if (!cancelled) setUnread(Number(d?.count) || 0); })

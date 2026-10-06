@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { NextResponse } from "next/server";
 import { registerStoreApiCache } from "@/lib/store-api-cache-registry";
 
@@ -8,7 +9,7 @@ const SETTINGS_TTL = 8 * 1000; // 8 seconds
 registerStoreApiCache("seller-settings", () => settingsCache.clear());
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 export async function GET(req) {
   try {

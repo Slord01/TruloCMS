@@ -1,0 +1,11 @@
+# Database only: all application services remain on Vercel.
+# Applying this Blueprint creates a paid database; review it in Render first.
+databases:
+  - name: trulo-cms-postgres
+    plan: 0.1c-256mb
+    region: frankfurt
+    postgresMajorVersion: "17"
+    databaseName: trulo_cms
+    user: trulo_cms
+    diskSizeGB: 1
+    storageAutoscalingEnabled: false

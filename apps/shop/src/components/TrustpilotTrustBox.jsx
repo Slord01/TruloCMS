@@ -28,7 +28,7 @@ export default function TrustpilotTrustBox({
   const wrapRef = useRef(null);
 
   useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000";
+    const base = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms";
     fetch(`${base.replace(/\/$/, "")}/store/trustpilot-config`)
       .then((r) => r.json())
       .then(setCfg)

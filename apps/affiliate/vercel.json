@@ -1,6 +1,0 @@
-{
-  "buildCommand": "cd ../.. && npm install && turbo run build --filter=@trulo/affiliate",
-  "outputDirectory": ".next",
-  "framework": "nextjs",
-  "installCommand": "cd ../.. && npm install"
-}

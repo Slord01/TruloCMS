@@ -36,7 +36,7 @@ export default function ShopPresenceHeartbeat() {
 
     const ping = () => {
       if (cancelled || typeof document === "undefined" || document.visibilityState === "hidden") return;
-      fetch("/api/store-presence-heartbeat", {
+      fetch("/shop/api/store-presence-heartbeat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -65,7 +65,7 @@ export default function ShopPresenceHeartbeat() {
   useEffect(() => {
     const sid = getOrCreateSessionId();
     if (!sid) return;
-    fetch("/api/store-presence-heartbeat", {
+    fetch("/shop/api/store-presence-heartbeat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

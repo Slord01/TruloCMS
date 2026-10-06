@@ -22,9 +22,10 @@ const devBackendHosts = isProduction
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  basePath: "",
+  env: { NEXT_PUBLIC_CMS_BACKEND_URL: "/api/cms" },
   outputFileTracingRoot: monorepoRoot,
   reactStrictMode: true,
-  env: { NEXT_PUBLIC_CMS_BACKEND_URL: process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000" },
   experimental: {
     // Allow larger multipart/form-data payloads for Excel import route handlers.
     proxyClientMaxBodySize: 100 * 1024 * 1024, // 100MB — category Excel with i18n HTML
@@ -93,11 +94,11 @@ const nextConfig = {
       "font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com",
       // XHR/fetch to backend API; wss for any future WebSocket features.
       // Dev-only backend origins come from SC_ALLOWED_DEV_BACKEND_HOSTS env.
-      `connect-src 'self' https: wss: ${new URL(process.env.NEXT_PUBLIC_CMS_BACKEND_URL || 'http://localhost:9000').origin}${devBackendHosts.length ? " " + devBackendHosts.join(" ") : ""}`,
+      `connect-src 'self' https: wss: ${devBackendHosts.length ? " " + devBackendHosts.join(" ") : ""}`,
       // Admin panel must never be embeddable in any frame (frame-ancestors) — but this page embeds
       // Stripe's own Card Element / 3D Secure iframes AND the shop's cms-preview route, so those
       // origins must be allowed here.
-      `frame-src https://js.stripe.com https://hooks.stripe.com${shopOrigin ? ` ${shopOrigin}` : ""}${!isProduction ? " http://localhost:*" : ""}`,
+      `frame-src 'self' https://js.stripe.com https://hooks.stripe.com${shopOrigin ? ` ${shopOrigin}` : ""}${!isProduction ? " http://localhost:*" : ""}`,
       "frame-ancestors 'none'",
       "object-src 'none'",
       "base-uri 'self'",

@@ -16,7 +16,7 @@ import {
 export async function GET(request, { params }) {
   const { code } = await params;
   const base = getBackendUrl();
-  const fallback = () => NextResponse.redirect(new URL("/", request.url));
+  const fallback = () => NextResponse.redirect(new URL("/shop/", request.url));
 
   let resolved;
   try {

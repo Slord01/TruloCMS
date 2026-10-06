@@ -781,7 +781,7 @@ export default function MediaPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,.pdf,.svg"
+        accept="image/jpeg,image/png,image/webp,image/avif,image/gif"
         multiple
         style={{ display: "none" }}
         onChange={(e) => { uploadFiles(e.target.files); e.target.value = ""; }}
@@ -789,7 +789,7 @@ export default function MediaPage() {
       <input
         ref={folderInputRef}
         type="file"
-        accept="image/*,.pdf,.svg"
+        accept="image/jpeg,image/png,image/webp,image/avif,image/gif"
         multiple
         // @ts-ignore
         webkitdirectory=""

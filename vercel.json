@@ -1,0 +1,100 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "sellercentral": {
+      "root": "apps/sellercentral",
+      "framework": "nextjs",
+      "installCommand": "cd ../.. && npm ci --legacy-peer-deps",
+      "buildCommand": "cd ../.. && npm run build --workspace=@trulo/sellercentral",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "cms-backend",
+          "format": "url",
+          "env": "CMS_BACKEND_URL"
+        }
+      ]
+    },
+    "shop": {
+      "root": "apps/shop",
+      "framework": "nextjs",
+      "installCommand": "cd ../.. && npm ci --legacy-peer-deps",
+      "buildCommand": "cd ../.. && npm run build --workspace=@trulo/shop",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "cms-backend",
+          "format": "url",
+          "env": "CMS_BACKEND_URL"
+        }
+      ]
+    },
+    "affiliate": {
+      "root": "apps/affiliate",
+      "framework": "nextjs",
+      "installCommand": "cd ../.. && npm ci --legacy-peer-deps",
+      "buildCommand": "cd ../.. && npm run build --workspace=@trulo/affiliate",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "cms-backend",
+          "format": "url",
+          "env": "CMS_BACKEND_URL"
+        }
+      ]
+    },
+    "developer": {
+      "root": "apps/developer",
+      "framework": "nextjs",
+      "installCommand": "cd ../.. && npm ci --legacy-peer-deps",
+      "buildCommand": "cd ../.. && npm run build --workspace=@trulo/developer",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "cms-backend",
+          "format": "url",
+          "env": "CMS_BACKEND_URL"
+        }
+      ]
+    },
+    "cms-backend": {
+      "root": "apps/cms-backend",
+      "runtime": "node",
+      "installCommand": "cd ../.. && npm ci --legacy-peer-deps",
+      "entrypoint": "vercel-entry.cjs",
+      "functions": {
+        "vercel-entry.cjs": {
+          "includeFiles": "migrations/**",
+          "maxDuration": 60,
+          "regions": ["fra1"]
+        }
+      }
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/shop/:path*",
+      "destination": {
+        "service": "shop"
+      }
+    },
+    {
+      "source": "/affiliate/:path*",
+      "destination": {
+        "service": "affiliate"
+      }
+    },
+    {
+      "source": "/developer/:path*",
+      "destination": {
+        "service": "developer"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "sellercentral"
+      }
+    }
+  ]
+}

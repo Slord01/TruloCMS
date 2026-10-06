@@ -98,8 +98,8 @@ export function HomeMobileSubnavRails({ children }) {
       setItems(second ? rootItems(second.items) : []);
     };
     Promise.all([
-      fetch("/api/store-menu-locations").then((r) => r.json()).catch(() => ({ locations: [] })),
-      fetch(`/api/store-menus?locale=${encodeURIComponent(locale)}`).then((r) => r.json()).catch(() => ({ menus: [] })),
+      fetch("/shop/api/store-menu-locations").then((r) => r.json()).catch(() => ({ locations: [] })),
+      fetch(`/shop/api/store-menus?locale=${encodeURIComponent(locale)}`).then((r) => r.json()).catch(() => ({ menus: [] })),
     ]).then(([loc, menu]) => apply(loc, menu));
     return () => {
       cancelled = true;

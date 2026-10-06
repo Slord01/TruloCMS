@@ -4,7 +4,7 @@
 // backend, not localhost — this app is public-facing, and a missing/not-yet-rebuilt
 // NEXT_PUBLIC_CMS_BACKEND_URL in production used to make every fetch here try
 // http://localhost:9000 from the VISITOR's own browser (ERR_CONNECTION_REFUSED).
-const DEFAULT_PUBLIC_MEDUSA_URL = 'http://localhost:9000'
+const DEFAULT_PUBLIC_MEDUSA_URL = "/affiliate/api/cms"
 const BASE = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || DEFAULT_PUBLIC_MEDUSA_URL).replace(/\/$/, '') + '/affiliate-api/v1'
 
 function getToken() {

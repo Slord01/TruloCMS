@@ -17,7 +17,7 @@ import { createOrderSupportCase, primaryCaseIdFromCreate } from "@/lib/create-or
 import { destinationCountryFromOrder, formatVatPercent, getGoodsVatRatePercent, splitInclusiveVat, orderBonusDiscountCents, orderCouponDiscountCents } from "@/lib/goods-vat";
 
 const ORANGE = "#ee8a12";
-const BACKEND = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+const BACKEND = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms").replace(/\/$/, "");
 
 /* ── helpers ── */
 const INTL_LOCALE = { de: "de-DE", en: "en-GB", tr: "tr-TR", fr: "fr-FR", es: "es-ES", it: "it-IT" };
@@ -691,7 +691,7 @@ export default function OrderDetailPage() {
         // Forward the token here too (not just the /orders/me lookup above) — a logged-in customer
         // pasting another customer's order id into the URL must still be rejected by the ownership
         // check in storeOrdersGET, not silently fall through to the unauthenticated guest path.
-        const res = await fetch(`/api/store-orders/${orderId}`, {
+        const res = await fetch(`/shop/api/store-orders/${orderId}`, {
           cache: "no-store",
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
@@ -1005,7 +1005,7 @@ export default function OrderDetailPage() {
         <Card>
           <CardTitle>{t("actionsHeading")}</CardTitle>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <ActionBtn bg="#f0f9ff" color="#0369a1" onClick={() => openPdf(`/api/store-invoice/${order.id}`, t("pdfLoadFailed"))}>
+            <ActionBtn bg="#f0f9ff" color="#0369a1" onClick={() => openPdf(`/shop/api/store-invoice/${order.id}`, t("pdfLoadFailed"))}>
               <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
               {t("downloadInvoice")}
             </ActionBtn>
@@ -1020,7 +1020,7 @@ export default function OrderDetailPage() {
               </ActionBtn>
             )}
             {approvedReturn && (
-              <ActionBtn bg="#fffbeb" color="#92400e" onClick={() => openPdf(`/api/store-return-retourenschein/${order.id}`, t("pdfLoadFailed"))}>
+              <ActionBtn bg="#fffbeb" color="#92400e" onClick={() => openPdf(`/shop/api/store-return-retourenschein/${order.id}`, t("pdfLoadFailed"))}>
                 {t("returnSlip")}
               </ActionBtn>
             )}

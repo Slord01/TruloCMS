@@ -3,9 +3,9 @@
  * Mobile Chrome often ignores cross-origin CDN <link rel=icon> hrefs; Next auto
  * /icon routes also collide across apps — keep a single same-origin proxy.
  */
-export function applyDocumentFavicon(url = "/api/brand-favicon") {
+export function applyDocumentFavicon(url = "/shop/api/brand-favicon") {
   if (typeof document === "undefined") return;
-  const href = String(url || "/api/brand-favicon").trim() || "/api/brand-favicon";
+  const href = String(url || "/shop/api/brand-favicon").trim() || "/shop/api/brand-favicon";
 
   const stale = document.querySelectorAll(
     "link[rel='icon'], link[rel='shortcut icon'], link[rel='apple-touch-icon'], link[rel='apple-touch-icon-precomposed']",

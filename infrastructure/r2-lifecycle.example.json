@@ -1,0 +1,10 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-unfinished-cms-uploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "staging/" },
+      "Expiration": { "Days": 1 }
+    }
+  ]
+}

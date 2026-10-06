@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { tokens } from "@/design-system/tokens";
 
-const BACKEND_URL = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+const BACKEND_URL = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms").replace(/\/$/, "");
 
 function UnsubscribeInner() {
   const t = useTranslations("newsletter");

@@ -55,7 +55,7 @@ function useLandingCopy() {
   return ctx;
 }
 
-const BACKEND_URL = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+const BACKEND_URL = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/api/cms").replace(/\/$/, "");
 
 // ── i18n helpers ──────────────────────────────────────────────────────────────
 

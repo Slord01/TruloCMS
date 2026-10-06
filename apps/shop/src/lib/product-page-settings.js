@@ -15,7 +15,7 @@ export function useProductPageSettings() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/product-page-settings", { cache: "no-store" })
+    fetch("/shop/api/product-page-settings", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!cancelled && d && typeof d.settings === "object") setSettings(d.settings);

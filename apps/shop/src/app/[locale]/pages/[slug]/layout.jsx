@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 ﻿import { headers } from "next/headers";
 import SeoJsonLd from "@/components/SeoJsonLd";
 import {
@@ -9,9 +10,7 @@ import {
 } from "@/lib/seo";
 import { catalogShopPathForSlug } from "@/lib/catalog-cms-page";
 
-const BACKEND = (
-  process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000"
-).replace(/\/$/, "");
+const BACKEND = () => getCmsBackendUrl();
 
 export async function generateMetadata({ params }) {
   const { slug, locale } = await params;
@@ -20,7 +19,7 @@ export async function generateMetadata({ params }) {
   if (!slug) return { title: "Trulo" };
   const dest = catalogShopPathForSlug(slug);
   try {
-    const r = await fetch(`${BACKEND}/store/pages/${encodeURIComponent(String(slug))}`, {
+    const r = await fetch(`${BACKEND()}/store/pages/${encodeURIComponent(String(slug))}`, {
       cache: "no-store",
     });
     if (!r.ok) return { title: "Trulo" };
@@ -62,12 +61,12 @@ export default async function PagesSlugLayout({ children, params }) {
   let jsonLd = null;
   if (slug) {
     try {
-      const pageRes = await fetch(`${BACKEND}/store/pages/${encodeURIComponent(String(slug))}`, {
+      const pageRes = await fetch(`${BACKEND()}/store/pages/${encodeURIComponent(String(slug))}`, {
         cache: "no-store",
       });
       const page = pageRes.ok ? await pageRes.json().catch(() => null) : null;
       if (page?.id) {
-        const landingRes = await fetch(`${BACKEND}/store/landing-page/${encodeURIComponent(page.id)}`, {
+        const landingRes = await fetch(`${BACKEND()}/store/landing-page/${encodeURIComponent(page.id)}`, {
           cache: "no-store",
         });
         const landing = landingRes.ok ? await landingRes.json().catch(() => null) : null;

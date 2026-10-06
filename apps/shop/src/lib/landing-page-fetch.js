@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 /**
  * Shared by the /api/store-landing-page proxy route AND the homepage's server-side render
  * (apps/shop/src/app/[locale]/page.jsx) — keeps the fetch URL, revalidate window, and the
@@ -10,7 +11,7 @@ import { toSalesScore } from "@/lib/bestseller";
 import { resolveHomeComposition } from "@trulo/shop-theme";
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 function walkContainers(list, out = []) {
   for (const c of list || []) {

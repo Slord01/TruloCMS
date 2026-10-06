@@ -1,7 +1,8 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { NextResponse } from "next/server";
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 // Thin proxy to the real recommendation engine (apps/medusa-backend/src/routes/personalization.js),
 // which reads this project's actual catalog/order tables (admin_hub_products, store_orders,

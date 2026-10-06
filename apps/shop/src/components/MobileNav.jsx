@@ -385,7 +385,7 @@ export default function MobileNav({ layout = "fixed" }) {
   useEffect(() => {
     let cancelled = false;
     setCategoriesLoading(true);
-    cachedJsonFetch(`/api/store-categories${shallowCategoriesQuery(locale)}`, { ttlMs: 60000 })
+    cachedJsonFetch(`/shop/api/store-categories${shallowCategoriesQuery(locale)}`, { ttlMs: 60000 })
       .then((d) => {
         if (cancelled) return;
         setCategoryTree(Array.isArray(d?.tree) ? d.tree : []);
@@ -405,7 +405,7 @@ export default function MobileNav({ layout = "fixed" }) {
     if (!parentId || categoryChildrenLoadedRef.current.has(parentId)) return undefined;
     categoryChildrenLoadedRef.current.add(parentId);
     let cancelled = false;
-    cachedJsonFetch(`/api/store-categories${childrenCategoriesQuery(locale, parentId)}`, { ttlMs: 60000 })
+    cachedJsonFetch(`/shop/api/store-categories${childrenCategoriesQuery(locale, parentId)}`, { ttlMs: 60000 })
       .catch(() => ({ tree: [] }))
       .then((res) => {
         if (cancelled) return;

@@ -1,10 +1,9 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 ﻿import { headers } from "next/headers";
 import SeoJsonLd from "@/components/SeoJsonLd";
 import { absolutePublicUrl, buildBrandJsonLd, buildPageMetadata, marketFromHeader, stripHtml } from "@/lib/seo";
 
-const BASE = (
-  process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000"
-).replace(/\/$/, "");
+const BASE = () => getCmsBackendUrl();
 
 function siteDisplayName() {
   const explicit = (process.env.NEXT_PUBLIC_SITE_NAME || "").trim();
@@ -37,7 +36,7 @@ export async function generateMetadata({ params }) {
   }
 
   try {
-    const res = await fetch(`${BASE}/store/brands/${encodeURIComponent(handle)}`, {
+    const res = await fetch(`${BASE()}/store/brands/${encodeURIComponent(handle)}`, {
       next: { revalidate: 120 },
     });
     const data = res.ok ? await res.json().catch(() => ({})) : {};
@@ -75,7 +74,7 @@ export default async function BrandLayout({ children, params }) {
   let jsonLd = null;
   if (handle) {
     try {
-      const res = await fetch(`${BASE}/store/brands/${encodeURIComponent(handle)}`, {
+      const res = await fetch(`${BASE()}/store/brands/${encodeURIComponent(handle)}`, {
         next: { revalidate: 120 },
       });
       const data = res.ok ? await res.json().catch(() => ({})) : {};

@@ -97,7 +97,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/store-seller-settings?seller_id=default", { cache: "no-store" })
+    fetch("/shop/api/store-seller-settings?seller_id=default", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;
@@ -115,7 +115,7 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    applyDocumentFavicon("/api/brand-favicon");
+    applyDocumentFavicon("/shop/api/brand-favicon");
   }, [branding.favicon]);
 
   useEffect(() => {

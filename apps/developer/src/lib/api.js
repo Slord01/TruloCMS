@@ -1,6 +1,6 @@
 'use client'
 
-const BASE = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || 'http://localhost:9000') + '/developer-api/v1'
+const BASE = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/developer/api/cms") + '/developer-api/v1'
 
 function getToken() {
   if (typeof window === 'undefined') return null

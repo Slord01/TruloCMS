@@ -82,7 +82,7 @@ async function loadCatalogPage(client, slug) {
     if (data?.id) return data
   }
   try {
-    const list = await fetch('/api/store-pages', { cache: 'no-store' }).then((r) => r.json())
+    const list = await fetch('/shop/api/store-pages', { cache: 'no-store' }).then((r) => r.json())
     const pages = Array.isArray(list?.pages) ? list.pages : []
     const wanted = new Set(aliases.map((s) => s.toLowerCase()))
     const bySlug = pages.find((p) => wanted.has(String(p.slug || '').toLowerCase()))
@@ -132,7 +132,7 @@ export default function CatalogCmsLanding({
         setPage(data || null)
         if (data?.id) {
           try {
-            const lp = await fetch(`/api/store-landing-page/${encodeURIComponent(data.id)}`, {
+            const lp = await fetch(`/shop/api/store-landing-page/${encodeURIComponent(data.id)}`, {
               cache: 'no-store',
             }).then((r) => r.json())
             if (!cancelled) setLanding(lp && !lp.__error ? lp : null)

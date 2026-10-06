@@ -93,7 +93,7 @@ export function isValidCurrency(s) {
  * @returns {{ country: string, lang: string, currency: string, rest: string } | null}
  */
 export function parseMarketPath(pathname) {
-  const p = pathname || "";
+  const p = String(pathname || '').replace(/^\/shop(?=\/|$)/, '');
   const parts = p.split("/").filter(Boolean);
   if (parts.length < 2) return null;
   const country = parts[0].toLowerCase();

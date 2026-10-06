@@ -60,7 +60,7 @@ export function useSearchDiscovery(active) {
     setRecentCats(cats);
     if (loadedRef.current) return undefined;
     loadedRef.current = true;
-    fetch("/api/store-categories?tree=true&is_visible=true&depth=1")
+    fetch("/shop/api/store-categories?tree=true&is_visible=true&depth=1")
       .then((r) => r.json())
       .then((d) => {
         if (!aliveRef.current) return;
@@ -70,12 +70,12 @@ export function useSearchDiscovery(active) {
       .catch(() => {});
     const first = cats[0];
     if (first) {
-      fetch(`/api/store-products?category=${encodeURIComponent(first.slug)}&limit=4`)
+      fetch(`/shop/api/store-products?category=${encodeURIComponent(first.slug)}&limit=4`)
         .then((r) => r.json())
         .then((d) => { if (aliveRef.current) setBrowse({ cat: first, products: Array.isArray(d?.products) ? d.products.slice(0, 4) : [] }); })
         .catch(() => {});
     }
-    fetch("/api/store-products?limit=12")
+    fetch("/shop/api/store-products?limit=12")
       .then((r) => r.json())
       .then((d) => { if (aliveRef.current) setRecommended(Array.isArray(d?.products) ? d.products : []); })
       .catch(() => {});

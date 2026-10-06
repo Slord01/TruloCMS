@@ -573,7 +573,7 @@ export default function SearchTemplate() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/store-metafield-definitions")
+    fetch("/shop/api/store-metafield-definitions")
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled) setMetafieldDefinitions(data?.definitions || {});
@@ -601,7 +601,7 @@ export default function SearchTemplate() {
     }
     let cancelled = false;
     setTreeLoading(true);
-    cachedJsonFetch(`/api/store-categories${categoryPathQuery(locale, { id: dominantId })}`, { ttlMs: 60000 })
+    cachedJsonFetch(`/shop/api/store-categories${categoryPathQuery(locale, { id: dominantId })}`, { ttlMs: 60000 })
       .then((data) => {
         if (cancelled) return;
         if (!data?.category) {
@@ -669,7 +669,7 @@ export default function SearchTemplate() {
       return undefined;
     }
     let cancelled = false;
-    cachedJsonFetch(`/api/store-categories${childrenCategoriesQuery(locale, parentId)}`, { ttlMs: 60000 })
+    cachedJsonFetch(`/shop/api/store-categories${childrenCategoriesQuery(locale, parentId)}`, { ttlMs: 60000 })
       .then((data) => {
         if (cancelled) return;
         setParentSiblings(Array.isArray(data?.tree) ? data.tree : []);

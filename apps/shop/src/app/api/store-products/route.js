@@ -1,8 +1,9 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { NextResponse } from "next/server";
 import { registerStoreApiCache } from "@/lib/store-api-cache-registry";
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 // Cache approved seller IDs — changes rarely, no need to re-fetch every product request
 const approvedCache = { ids: null, expiresAt: 0 };

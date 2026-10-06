@@ -134,7 +134,7 @@ function buildOrderPayload(cartId, paymentIntentId, shippingCents, contact, bill
 async function createStoreOrder(payload, custTok) {
   const orderHeaders = { "Content-Type": "application/json" };
   if (custTok) orderHeaders.Authorization = `Bearer ${custTok}`;
-  const res = await fetch("/api/store-orders", {
+  const res = await fetch("/shop/api/store-orders", {
     method: "POST",
     headers: orderHeaders,
     body: JSON.stringify(payload),
@@ -1467,7 +1467,7 @@ function ZeroCheckoutForm({ cartId, items, subtotalCents, amountToPayCents, ship
     try {
       const orderHeaders = { "Content-Type": "application/json" };
       orderHeaders.Authorization = `Bearer ${custTok}`;
-      const res = await fetch("/api/store-orders", {
+      const res = await fetch("/shop/api/store-orders", {
         method: "POST",
         headers: orderHeaders,
         body: JSON.stringify({
@@ -1916,7 +1916,7 @@ export default function CheckoutPage() {
     // "configError" box below offer a real Retry button for anything left over.
     const attempt = async (n) => {
       try {
-        const r = await fetch("/api/store-public-payment-config");
+        const r = await fetch("/shop/api/store-public-payment-config");
         const d = await r.json();
         if (cancelled) return;
         const pk = (d?.stripe_publishable_key || "").trim();
@@ -2118,7 +2118,7 @@ export default function CheckoutPage() {
     const paymentIntentHeaders = { "Content-Type": "application/json" };
     if (custTok) paymentIntentHeaders.Authorization = `Bearer ${custTok}`;
     const cancelId = lastPaymentIntentIdRef.current;
-    fetch("/api/store-payment-intent", {
+    fetch("/shop/api/store-payment-intent", {
       method: "POST",
       headers: paymentIntentHeaders,
       body: JSON.stringify({

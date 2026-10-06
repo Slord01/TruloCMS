@@ -27,7 +27,7 @@ function useCartLineImages(items) {
     let cancelled = false;
     Promise.all(
       key.split(",").map((id) =>
-        cachedJsonFetch(`/api/store-products/${encodeURIComponent(id)}`, { ttlMs: 300000 })
+        cachedJsonFetch(`/shop/api/store-products/${encodeURIComponent(id)}`, { ttlMs: 300000 })
           .then((d) => [id, d?.product || null])
           .catch(() => [id, null]),
       ),
@@ -610,7 +610,7 @@ export default function CartSidebar() {
   useEffect(() => {
     if (!sidebarOpen) return;
     let cancelled = false;
-    fetch("/api/store-products?limit=200")
+    fetch("/shop/api/store-products?limit=200")
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;
@@ -637,7 +637,7 @@ export default function CartSidebar() {
     if (!sidebarOpen) return;
     let cancelled = false;
     setRecommendedLoading(true);
-    fetch("/api/store-products?limit=8")
+    fetch("/shop/api/store-products?limit=8")
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;

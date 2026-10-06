@@ -638,7 +638,7 @@ function OrderCard({ order, expanded, onToggle, onRefresh }) {
             <ActionBtn
               color="#0369a1" bg="#f0f9ff"
               disabled={busy === "invoice"}
-              onClick={e => { e.stopPropagation(); withBusy("invoice", () => downloadBlob(`/api/store-invoice/${order.id}`, `Rechnung-${orderNum}.pdf`, token())); }}
+              onClick={e => { e.stopPropagation(); withBusy("invoice", () => downloadBlob(`/shop/api/store-invoice/${order.id}`, `Rechnung-${orderNum}.pdf`, token())); }}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
@@ -652,7 +652,7 @@ function OrderCard({ order, expanded, onToggle, onRefresh }) {
               <ActionBtn
                 color="#6d28d9" bg="#f5f3ff"
                 disabled={busy === "retourenschein"}
-                onClick={e => { e.stopPropagation(); withBusy("retourenschein", () => downloadBlob(`/api/store-return-retourenschein/${order.id}`, `Retourenschein-${orderNum}.pdf`, token())); }}
+                onClick={e => { e.stopPropagation(); withBusy("retourenschein", () => downloadBlob(`/shop/api/store-return-retourenschein/${order.id}`, `Retourenschein-${orderNum}.pdf`, token())); }}
               >
                 {busy === "retourenschein" ? "…" : t("returnSlip")}
               </ActionBtn>

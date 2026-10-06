@@ -1,7 +1,8 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { NextResponse } from "next/server";
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 /** Always fresh — template changes (products_per_row, etc.) must show without waiting for TTL. */
 export const dynamic = "force-dynamic";

@@ -491,7 +491,7 @@ export default function BrandPage() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/store-brands/${encodeURIComponent(handle)}`);
+        const res = await fetch(`/shop/api/store-brands/${encodeURIComponent(handle)}`);
         if (res.status === 404) { setNotFoundSt(true); setLoading(false); return; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -517,7 +517,7 @@ export default function BrandPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/store-metafield-definitions")
+    fetch("/shop/api/store-metafield-definitions")
       .then((r) => r.json())
       .then((data) => { if (!cancelled) setMetafieldDefinitions(data?.definitions || {}); })
       .catch(() => {});

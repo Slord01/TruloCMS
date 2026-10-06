@@ -217,8 +217,8 @@ export default function Footer() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/store-menus?locale=${encodeURIComponent(locale)}`).then((r) => r.json()),
-      fetch("/api/store-seller-settings").then((r) => r.json()),
+      fetch(`/shop/api/store-menus?locale=${encodeURIComponent(locale)}`).then((r) => r.json()),
+      fetch("/shop/api/store-seller-settings").then((r) => r.json()),
     ])
       .then(([menuData, sellerData]) => {
         const menus = menuData.menus || [];

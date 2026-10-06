@@ -1,7 +1,8 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { NextResponse } from "next/server";
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 // Thin proxy: logs "this logged-in customer viewed this product" server-side
 // (store_customer_product_views), so recently-viewed/trending-in-your-categories work

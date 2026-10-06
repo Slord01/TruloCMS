@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 ﻿import ExcelJS from "exceljs";
 import { getImportApiMessages, resolveRequestLocale } from "@/lib/import-export-i18n";
 import { EXPORT_DATASETS, getExportDataset, resolveExportColumns } from "@/lib/import-export-columns";
@@ -5,7 +6,7 @@ import { EXPORT_DATASETS, getExportDataset, resolveExportColumns } from "@/lib/i
 const DEFAULT_BACKEND = "http://localhost:9000";
 
 function getBackendBase() {
-  return (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, "");
+  return getCmsBackendUrl().replace(/\/$/, "");
 }
 
 function str(v) {

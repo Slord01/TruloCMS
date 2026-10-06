@@ -25,7 +25,7 @@ export default function CatalogHubRoute({ cmsSlug, settingsKey = "", mode, fallb
   useEffect(() => {
     if (!settingsKey) return undefined;
     let cancelled = false;
-    fetch(`/api/store-api-page-settings/${encodeURIComponent(settingsKey)}`)
+    fetch(`/shop/api/store-api-page-settings/${encodeURIComponent(settingsKey)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (!cancelled) setPageSettings(d || null); })
       .catch(() => {});

@@ -441,8 +441,8 @@ export default function AutoCatalogHub({
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      cachedJsonFetch("/api/store-categories?tree=true&is_visible=true", { ttlMs: 60000 }).catch(() => ({ tree: [] })),
-      cachedJsonFetch("/api/store-products?limit=1200", { ttlMs: 15000 }).catch(() => ({ products: [] })),
+      cachedJsonFetch("/shop/api/store-categories?tree=true&is_visible=true", { ttlMs: 60000 }).catch(() => ({ tree: [] })),
+      cachedJsonFetch("/shop/api/store-products?limit=1200", { ttlMs: 15000 }).catch(() => ({ products: [] })),
       loadCatalogBadgeRules().catch(() => ({ saleMinDiscountPercent: 0 })),
       loadNewProductWindowDays().catch(() => 15),
     ]).then(([cats, prods, badge, days]) => {

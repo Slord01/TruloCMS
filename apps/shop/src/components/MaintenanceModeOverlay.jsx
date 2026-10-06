@@ -11,7 +11,7 @@ export default function MaintenanceModeOverlay() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/store-seller-settings?seller_id=default", { cache: "no-store" })
+    fetch("/shop/api/store-seller-settings?seller_id=default", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;

@@ -1,8 +1,9 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { NextResponse } from "next/server";
 import { registerStoreApiCache } from "@/lib/store-api-cache-registry";
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 const categoriesCache = new Map();
 /** Keep short — admin writes also POST /api/revalidate to clear this Map immediately.

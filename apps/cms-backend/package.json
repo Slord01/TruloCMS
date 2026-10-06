@@ -2,13 +2,24 @@
   "name": "@trulo/cms-backend",
   "version": "1.0.0",
   "private": true,
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "dev": "node --watch server.cjs",
     "start": "node server.cjs",
     "build": "node --check server.cjs",
     "typecheck": "node --check server.cjs",
     "test": "node --test test/*.test.cjs",
-    "create-superuser": "node create-superuser.cjs"
+    "create-superuser": "node create-superuser.cjs",
+    "test:postgres": "node test/run-postgres.cjs"
+  },
+  "dependencies": {
+    "aws4fetch": "1.0.20",
+    "pg": "8.16.3",
+    "sharp": "0.34.5"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.14"
   }
 }

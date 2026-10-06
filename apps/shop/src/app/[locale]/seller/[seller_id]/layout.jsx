@@ -1,10 +1,9 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { headers } from "next/headers";
 import SeoJsonLd from "@/components/SeoJsonLd";
 import { absolutePublicUrl, buildPageMetadata, buildSellerJsonLd, marketFromHeader, stripHtml } from "@/lib/seo";
 
-const BASE = (
-  process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000"
-).replace(/\/$/, "");
+const BASE = () => getCmsBackendUrl();
 
 export async function generateMetadata({ params }) {
   const { seller_id: sellerId, locale } = await params;
@@ -14,7 +13,7 @@ export async function generateMetadata({ params }) {
 
   try {
     const res = await fetch(
-      `${BASE}/store/seller-profile/${encodeURIComponent(sellerId)}`,
+      `${BASE()}/store/seller-profile/${encodeURIComponent(sellerId)}`,
       { next: { revalidate: 120 } },
     );
     const data = res.ok ? await res.json().catch(() => ({})) : {};
@@ -57,7 +56,7 @@ export default async function SellerLayout({ children, params }) {
   if (sellerId) {
     try {
       const res = await fetch(
-        `${BASE}/store/seller-profile/${encodeURIComponent(sellerId)}`,
+        `${BASE()}/store/seller-profile/${encodeURIComponent(sellerId)}`,
         { next: { revalidate: 120 } },
       );
       const data = res.ok ? await res.json().catch(() => ({})) : {};

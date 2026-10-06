@@ -17,7 +17,7 @@ function LocaleSwitcher() {
 
   function switchLocale(code) {
     const segments = window.location.pathname.split('/')
-    segments[1] = code
+    segments[2] = code
     window.location.href = segments.join('/')
     setOpen(false)
   }

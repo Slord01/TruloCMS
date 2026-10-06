@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import {
   SEO_DEFAULT_LOCALE,
   SEO_LOCALES,
@@ -9,11 +10,9 @@ import {
 import { defaultMarketForLocale } from "@/lib/shop-market";
 import { fetchEnabledShopLocales } from "@/lib/enabled-shop-locales";
 
-export const revalidate = 3600;
+export const dynamic = 'force-dynamic';
 
-const BACKEND = (
-  process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000"
-).replace(/\/$/, "");
+const BACKEND = () => getCmsBackendUrl();
 
 function escapeXml(value) {
   return String(value || "")
@@ -78,7 +77,7 @@ function flattenVisibleCategoriesWithProducts(nodes, out = []) {
 
 async function fetchJSON(path) {
   try {
-    const r = await fetch(`${BACKEND}${path}`, { next: { revalidate: 3600 } });
+    const r = await fetch(`${BACKEND()}${path}`, { next: { revalidate: 3600 } });
     return r.ok ? r.json() : null;
   } catch {
     return null;

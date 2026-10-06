@@ -127,7 +127,7 @@ export default function proxy(request) {
         cookieT?.country && isValidMarket(cookieT.country)
           ? cookieT.country
           : marketFromGeoRequest(request) || DEFAULT_MARKET;
-      const loginUrl = new URL(`${marketPrefix(market, locale)}/login`, request.url);
+      const loginUrl = new URL(`/shop${marketPrefix(market, locale)}/login`, request.url);
       loginUrl.searchParams.set("redirect", pathname);
       return NextResponse.redirect(loginUrl);
     }
@@ -149,7 +149,7 @@ export default function proxy(request) {
     const loc = localeFromAcceptLanguage(request) || DEFAULT_LOCALE;
     const market = marketFromGeoRequest(request) || DEFAULT_MARKET;
     return NextResponse.redirect(
-      new URL(`${marketPrefix(market, loc, DEFAULT_CURRENCY)}/sale`, request.url),
+      new URL(`/shop${marketPrefix(market, loc, DEFAULT_CURRENCY)}/sale`, request.url),
     );
   }
 
@@ -229,7 +229,7 @@ export default function proxy(request) {
 
     const destPath =
       rest === "" || rest === "/" ? `${mp}/` : `${mp}${rest}`;
-    const dest = new URL(destPath, request.url);
+    const dest = new URL(`/shop${destPath}`, request.url);
     // Keep the query string (?q=…, utm_*, …) — a bare path would drop it.
     dest.search = request.nextUrl.search;
     const redirectRes = NextResponse.redirect(dest);
@@ -244,7 +244,7 @@ export default function proxy(request) {
     const cookieT = marketTripleFromCookie(request);
     if (cookieT?.country && cookieT?.lang) {
       const mp = marketPrefix(cookieT.country, cookieT.lang);
-      return NextResponse.redirect(new URL(mp + "/", request.url));
+      return NextResponse.redirect(new URL('/shop' + mp + "/", request.url));
     }
 
     // Country from IP, language from that country. A visitor in Germany gets /de/de.
@@ -252,7 +252,7 @@ export default function proxy(request) {
     const locale = defaultLocaleForMarket(market);
 
     const mp = marketPrefix(market, locale, DEFAULT_CURRENCY);
-    const redirectRes = NextResponse.redirect(new URL(mp + "/", request.url));
+    const redirectRes = NextResponse.redirect(new URL('/shop' + mp + "/", request.url));
     try {
       rememberMarket(redirectRes, mp);
     } catch (_) {}

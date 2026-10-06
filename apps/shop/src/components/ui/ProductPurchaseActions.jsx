@@ -179,7 +179,7 @@ function BackInStockForm({ productId, variantId }) {
     if (!email.trim() || !email.includes("@")) return;
     setState("loading");
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000";
+      const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms";
       const r = await fetch(`${backendUrl}/store/back-in-stock-subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

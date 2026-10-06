@@ -3,13 +3,14 @@ const assert = require('node:assert/strict');
 const { openStore, createSuperuser } = require('../store.cjs');
 const { createServer, readToken } = require('../server.cjs');
 const { domainName, normalizeChannel, publicIp, verifyChannel } = require('../domain.cjs');
+const { openTestStore } = require('./test-store.cjs');
 
 async function fixture(t, options = {}) {
-  const db = openStore(':memory:');
-  createSuperuser(db, 'admin@example.com', 'test-password-12345');
-  const server = createServer({ db, ...options });
+  const db = await openTestStore();
+  (await createSuperuser(db, 'admin@example.com', 'test-password-12345'));
+  const server = (await createServer({ db, ...options }));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(async () => { await new Promise(resolve => server.close(resolve)); db.close(); });
+  t.after(async () => { await new Promise(resolve => server.close(resolve)); (await db.close()); });
   const base = `http://127.0.0.1:${server.address().port}`;
   let token;
   async function request(route, { method = 'GET', body, scope = 'all', authenticated = true, headers = {} } = {}) {
@@ -27,7 +28,7 @@ test('fresh database is empty; only signed superusers can access CMS', async t =
   assert.deepEqual((await request('/admin-hub/products')).body.products, []);
   const me = await request('/admin-hub/auth/me');
   assert.equal(me.body.user.role, 'superuser'); assert.equal(me.body.user.is_superuser, true);
-  const secret = db.prepare("SELECT value FROM secrets WHERE key = 'jwt'").get().value;
+  const secret = (await db.prepare("SELECT value FROM secrets WHERE key = 'jwt'").get()).value;
   assert.equal(readToken(token + 'tampered', secret), null);
   assert.equal((await request('/admin-hub/sales-channels', { headers: { Authorization: 'Bearer forged' } })).status, 401);
   assert.equal((await request('/admin-hub/auth/register', { method: 'POST', body: { email: 'seller@example.com', password: 'test-password-12345' }, authenticated: false })).status, 401);

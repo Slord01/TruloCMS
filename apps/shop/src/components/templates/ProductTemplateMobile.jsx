@@ -1194,7 +1194,7 @@ export default function ProductTemplateMobile() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/store-seller-settings", { cache: "no-store" })
+    fetch("/shop/api/store-seller-settings", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (!cancelled) setSellerStoreName((d?.store_name || "").toString());
@@ -1212,7 +1212,7 @@ export default function ProductTemplateMobile() {
     const sellerId = product?.seller_id || product?.metadata?.seller_id;
     if (!sellerId) return;
     let cancelled = false;
-    fetch(`/api/store-seller-settings?seller_id=${encodeURIComponent(sellerId)}`, { cache: "no-store" })
+    fetch(`/shop/api/store-seller-settings?seller_id=${encodeURIComponent(sellerId)}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (!cancelled && d?.store_name) setSellerStoreName(d.store_name.toString());
@@ -1232,7 +1232,7 @@ export default function ProductTemplateMobile() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/store-products/${encodeURIComponent(slug)}`, { cache: "no-store" });
+        const res = await fetch(`/shop/api/store-products/${encodeURIComponent(slug)}`, { cache: "no-store" });
         const data = await res.json();
         if (res.status === 404 || !data?.product) {
           setMultiOffer(null);
@@ -1283,7 +1283,7 @@ export default function ProductTemplateMobile() {
     try {
       const token = localStorage.getItem("trulo_customer_token");
       if (token && product.id) {
-        fetch("/api/personalization-view", {
+        fetch("/shop/api/personalization-view", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ product_id: product.id }),
@@ -1318,7 +1318,7 @@ export default function ProductTemplateMobile() {
     }
 
     let cancelled = false;
-    cachedJsonFetch(`/api/store-categories${categoryPathQuery(locale, { slug: categorySlug, id: categoryId })}`, { ttlMs: 60000 })
+    cachedJsonFetch(`/shop/api/store-categories${categoryPathQuery(locale, { slug: categorySlug, id: categoryId })}`, { ttlMs: 60000 })
       .then((data) => {
         if (cancelled) return;
         setCategoryAncestors(Array.isArray(data?.ancestors) ? data.ancestors : []);
@@ -1352,7 +1352,7 @@ export default function ProductTemplateMobile() {
     const ids = product.metadata?.related_product_ids || product.metadata?.also_bought_ids;
     const idList = Array.isArray(ids) ? ids.filter((id) => id && String(id).trim()) : [];
     if (idList.length > 0) {
-      Promise.all(idList.slice(0, 12).map((id) => fetch(`/api/store-products/${encodeURIComponent(id)}`).then((r) => r.json()).then((d) => d.product).catch(() => null)))
+      Promise.all(idList.slice(0, 12).map((id) => fetch(`/shop/api/store-products/${encodeURIComponent(id)}`).then((r) => r.json()).then((d) => d.product).catch(() => null)))
         .then((products) => {
           const valid = (products || []).filter(Boolean);
           setRecommended(valid.slice(0, 8));

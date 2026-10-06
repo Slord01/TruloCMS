@@ -189,7 +189,7 @@ export default function LegalPageShell({ slug, title, html, hero = "", updatedAt
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/store-menus?locale=${encodeURIComponent(locale)}`)
+    fetch(`/shop/api/store-menus?locale=${encodeURIComponent(locale)}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;

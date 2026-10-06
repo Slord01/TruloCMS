@@ -4,7 +4,7 @@
  */
 const BACKEND_URL =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_CMS_BACKEND_URL) ||
-  "http://localhost:9000";
+  "/api/cms";
 const BASE = (BACKEND_URL || "").replace(/\/$/, "");
 
 function getPathname(fullUrl) {

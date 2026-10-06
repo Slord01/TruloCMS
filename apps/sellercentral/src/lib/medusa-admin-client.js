@@ -10,7 +10,7 @@ import { reportSellerClientError } from './report-seller-client-error';
  */
 
 /** Trulo production backend — used when NEXT_PUBLIC_CMS_BACKEND_URL is unset. Local: set .env to http://localhost:9000 */
-const DEFAULT_PUBLIC_MEDUSA_URL = 'http://localhost:9000';
+const DEFAULT_PUBLIC_MEDUSA_URL = "/api/cms";
 
 const getDefaultBaseUrl = () => {
   const env = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || '';
@@ -897,22 +897,20 @@ class MedusaAdminClient {
   }
 
   async uploadMedia(formData, opts = {}) {
-    const base = this.baseURL || getDefaultBaseUrl()
-    const qs = new URLSearchParams()
-    if (opts.purpose) qs.set('purpose', String(opts.purpose))
-    const q = qs.toString()
-    const url = `${base}/admin-hub/v1/media${q ? `?${q}` : ''}`
-    const token = typeof window !== 'undefined' ? localStorage.getItem('sellerToken') : null
-    const res = await fetch(url, {
+    const file = formData.get('file')
+    if (!file || typeof file.arrayBuffer !== 'function') throw new Error('Choose an image file.')
+    const channel = selectedChannelId()
+    if (!channel || channel === 'all') throw new Error('Select one website before uploading an image.')
+    const upload = await this.request('/admin-hub/v1/media/presign', {
       method: 'POST',
-      body: formData,
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify({ filename: formData.get('display_filename') || file.name, mime_type: file.type, size: file.size, folder_id: formData.get('folder_id') || null, purpose: opts.purpose }),
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: res.statusText }))
-      throw new Error(err.message || `HTTP ${res.status}`)
-    }
-    return res.json()
+    // The signed URL supplies permission for this single object. Never forward
+    // CMS authorization headers or cookies to the storage provider.
+    const res = await fetch(upload.upload_url, { method: 'PUT', headers: upload.headers, body: file, credentials: 'omit' })
+    if (!res.ok) throw new Error(`Cloudflare image upload failed (HTTP ${res.status}).`)
+    if (selectedChannelId() !== channel) throw new Error('Website selection changed. Upload the image again for the selected website.')
+    return this.request('/admin-hub/v1/media/complete', { method: 'POST', body: JSON.stringify({ id: upload.id }) })
   }
 
   async registerMediaUrl(data) {

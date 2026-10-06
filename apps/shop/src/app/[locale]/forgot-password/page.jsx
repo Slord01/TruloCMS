@@ -5,7 +5,7 @@ import { Link } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import { tokens } from "@/design-system/tokens";
 
-const MEDUSA_BACKEND_URL = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+const MEDUSA_BACKEND_URL = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms").replace(/\/$/, "");
 
 export default function ForgotPasswordPage() {
   const tUi = useTranslations("shopUi");

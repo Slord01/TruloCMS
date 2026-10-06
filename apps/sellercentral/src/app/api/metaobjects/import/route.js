@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import ExcelJS from "exceljs";
 import {
   applyImportGroups,
@@ -8,7 +9,7 @@ import {
 const DEFAULT_BACKEND = "http://localhost:9000";
 
 function getBackendBase() {
-  return (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, "");
+  return getCmsBackendUrl().replace(/\/$/, "");
 }
 
 async function backendJson(path, { token, method = "GET", body } = {}) {

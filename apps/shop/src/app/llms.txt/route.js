@@ -1,7 +1,7 @@
 export const dynamic = "force-static";
 
 export async function GET() {
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:9000").replace(
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "/shop/api/cms").replace(
     /\/$/,
     "",
   );

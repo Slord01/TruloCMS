@@ -10,7 +10,7 @@ import {
 import { ShopStylesContext } from "@/context/ShopStylesContext";
 
 // Fetch styles through the internal API route (handles backend URL; route is no-store)
-const STYLES_URL = "/api/store-styles";
+const STYLES_URL = "/shop/api/store-styles";
 
 function loadAndApplyStyles(setStyles, injectCss, ensureGoogleFontLink, lastRawRef) {
   fetch(STYLES_URL, { cache: "no-store" })

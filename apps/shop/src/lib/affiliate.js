@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 /**
  * Shared helpers for affiliate tracking (docs/affiliate.md PR 2), used by the /r/[code] redirect
  * route and the /api/affiliate-track proxy — both server-side Next.js route handlers.
@@ -8,7 +9,7 @@ export const AFFILIATE_COOKIE_NAME = "__atrl";
 export const AFFILIATE_COOKIE_MAX_AGE_SECONDS = 30 * 86400; // config.COOKIE_MAX_AGE_SECONDS
 
 export const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 /**
  * @param {import("next/headers").ReadonlyRequestCookies | { get(name: string): { value: string } | undefined }} cookieStore

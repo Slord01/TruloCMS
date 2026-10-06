@@ -1,9 +1,16 @@
-const { DatabaseSync } = require('node:sqlite');
 const { mkdirSync } = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-function openStore(filename = process.env.CMS_DATABASE_PATH || path.join(__dirname, 'data', 'trulo.sqlite')) {
+async function openStore(filename) {
+  if (filename === undefined && process.env.DATABASE_URL) {
+    return require('./postgres-store.cjs').openPostgresStore();
+  }
+  if (filename === undefined && (process.env.VERCEL || process.env.NODE_ENV === 'production')) {
+    throw new Error('DATABASE_URL is required in production; local SQLite fallback is disabled.');
+  }
+  filename ||= process.env.CMS_DATABASE_PATH || path.join(__dirname, 'data', 'trulo.sqlite');
+  const { DatabaseSync } = require('node:sqlite');
   if (filename !== ':memory:') mkdirSync(path.dirname(path.resolve(filename)), { recursive: true });
   const db = new DatabaseSync(filename);
   db.exec(`
@@ -42,12 +49,12 @@ function checkPassword(password, hash) {
   const actual = hashPassword(password, salt).split(':')[1];
   return crypto.timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'));
 }
-function createSuperuser(db, email, password) {
+async function createSuperuser(db, email, password) {
   email = String(email || '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Valid email required.');
   if (typeof password !== 'string' || password.length < 12) throw new Error('Password must contain at least 12 characters.');
   const id = crypto.randomUUID();
-  db.prepare('INSERT INTO users VALUES (?, ?, ?, ?, ?)').run(id, email, hashPassword(password), 'superuser', new Date().toISOString());
+  await db.prepare('INSERT INTO users VALUES (?, ?, ?, ?, ?)').run(id, email, hashPassword(password), 'superuser', new Date().toISOString());
   return id;
 }
 module.exports = { openStore, hashPassword, checkPassword, createSuperuser };

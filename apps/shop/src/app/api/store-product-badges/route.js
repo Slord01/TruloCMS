@@ -1,7 +1,8 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { NextResponse } from "next/server";
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 /** Live badge styles — never CDN-cache; Sellercentral size edits must show immediately. */
 export const dynamic = "force-dynamic";

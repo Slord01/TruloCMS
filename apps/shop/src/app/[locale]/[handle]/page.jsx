@@ -843,10 +843,10 @@ function CollectionPage() {
         setLoading(true);
         setError(null);
 
-        const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000";
+        const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms";
 
         const tryProductHandle = async (h) => {
-          const r = await fetch(`/api/store-products/${encodeURIComponent(h)}`).catch(() => null);
+          const r = await fetch(`/shop/api/store-products/${encodeURIComponent(h)}`).catch(() => null);
           if (!r?.ok) return null;
           return r.json().catch(() => null);
         };
@@ -865,7 +865,7 @@ function CollectionPage() {
         }
 
         // Resolve category first so we don't wait on collection product dumps.
-        const categoryBySlugData = await fetch(`/api/store-categories${storeCategoriesQuery(locale, { slug: handle })}`)
+        const categoryBySlugData = await fetch(`/shop/api/store-categories${storeCategoriesQuery(locale, { slug: handle })}`)
           .then((r) => r.ok ? r.json() : null)
           .catch(() => null);
         if (categoryBySlugData?.category?.id || categoryBySlugData?.categories?.length) {
@@ -875,14 +875,14 @@ function CollectionPage() {
         }
 
         const [colData, productsData] = await Promise.all([
-          fetch(`/api/store-collections?handle=${encodeURIComponent(handle)}`).then((r) => r.ok ? r.json() : null).catch(() => null),
-          fetch(`/api/store-products?collection_handle=${encodeURIComponent(handle)}&limit=200`).then((r) => r.json()).catch(() => ({ products: [] })),
+          fetch(`/shop/api/store-collections?handle=${encodeURIComponent(handle)}`).then((r) => r.ok ? r.json() : null).catch(() => null),
+          fetch(`/shop/api/store-products?collection_handle=${encodeURIComponent(handle)}&limit=200`).then((r) => r.json()).catch(() => ({ products: [] })),
         ]);
 
         const col = colData?.collection ?? null;
         if (!col) {
           // Fallback: try CMS page by slug (via proxy — avoids CORS with direct backend URL)
-          const pageRes = await fetch(`/api/store-pages/${encodeURIComponent(handle)}`).catch(() => null);
+          const pageRes = await fetch(`/shop/api/store-pages/${encodeURIComponent(handle)}`).catch(() => null);
           if (pageRes?.ok) {
             const pageData = await pageRes.json().catch(() => null);
             if (pageData?.id) { setCmsPage(pageData); setLoading(false); return; }
@@ -936,7 +936,7 @@ function CollectionPage() {
     (async () => {
       const list = await Promise.all(
         ids.slice(0, 12).map((id) =>
-          fetch(`/api/store-products/${encodeURIComponent(id)}`).then((r) => r.json()).then((d) => d?.product).catch(() => null)
+          fetch(`/shop/api/store-products/${encodeURIComponent(id)}`).then((r) => r.json()).then((d) => d?.product).catch(() => null)
         )
       );
       setRecommendedProducts(list.filter(Boolean));
@@ -953,7 +953,7 @@ function CollectionPage() {
       return;
     }
     let cancelled = false;
-    fetch(`/api/store-landing-page/${encodeURIComponent(cmsPage.id)}`)
+    fetch(`/shop/api/store-landing-page/${encodeURIComponent(cmsPage.id)}`)
       .then((r) => r.json())
       .then(async (data) => {
         if (cancelled) return;
@@ -974,7 +974,7 @@ function CollectionPage() {
         // drop links whose category currently has nothing.
         const withCounts = await Promise.all(
           candidates.map((l) =>
-            fetch(`/api/store-products?category=${encodeURIComponent(l.slug)}&limit=1`)
+            fetch(`/shop/api/store-products?category=${encodeURIComponent(l.slug)}&limit=1`)
               .then((r) => r.json())
               .then((d) => ({ ...l, hasProducts: Array.isArray(d?.products) && d.products.length > 0 }))
               .catch(() => ({ ...l, hasProducts: false }))
@@ -1000,7 +1000,7 @@ function CollectionPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/store-metafield-definitions")
+    fetch("/shop/api/store-metafield-definitions")
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled) setMetafieldDefinitions(data?.definitions || {});

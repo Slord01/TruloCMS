@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { getLocalizedProduct, getLocalizedCategory } from "@/lib/format";
 import {
   DEFAULT_MARKET,
@@ -9,16 +10,14 @@ import {
 import { storefrontProductHandle, baseHandleFromUrl } from "@/lib/product-url-handle";
 
 export const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
+  process.env.NEXT_PUBLIC_SITE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}/shop` : "http://localhost:3000/shop")
 ).replace(/\/+$/, "");
 
 export const SEO_LOCALES = SHOP_LOCALES;
 export const SEO_DEFAULT_LOCALE = "de";
 export const SEO_DEFAULT_MARKET = DEFAULT_MARKET;
 
-const BACKEND = (
-  process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000"
-).replace(/\/$/, "");
+const BACKEND = () => getCmsBackendUrl();
 
 export function normalizeLocale(locale) {
   const value = String(locale || "").toLowerCase();
@@ -195,7 +194,8 @@ function absoluteImageUrl(url) {
   const value = String(url || "").trim();
   if (!value) return "";
   if (value.startsWith("http") || value.startsWith("//")) return value;
-  return `${BACKEND}${value.startsWith("/") ? "" : "/"}${value}`;
+  // Metadata must never publish an internal service binding URL.
+  return `${SITE_URL}/api/cms${value.startsWith("/") ? "" : "/"}${value}`;
 }
 
 /**
@@ -575,7 +575,7 @@ export async function fetchStoreProduct(handle, { revalidate = 60 } = {}) {
   if (!raw) return null;
   const tryFetch = async (h) => {
     try {
-      const res = await fetch(`${BACKEND}/store/products/${encodeURIComponent(h)}`, {
+      const res = await fetch(`${BACKEND()}/store/products/${encodeURIComponent(h)}`, {
         next: { revalidate },
       });
       if (!res.ok) return null;
@@ -598,7 +598,7 @@ export async function fetchStoreCollection(handle, { revalidate = 60 } = {}) {
   if (!raw) return null;
   try {
     const res = await fetch(
-      `${BACKEND}/store/collections?handle=${encodeURIComponent(raw)}`,
+      `${BACKEND()}/store/collections?handle=${encodeURIComponent(raw)}`,
       { next: { revalidate } },
     );
     if (!res.ok) return null;
@@ -614,7 +614,7 @@ export async function fetchStoreCategoryBySlug(slug, { revalidate = 60 } = {}) {
   if (!raw) return null;
   try {
     const res = await fetch(
-      `${BACKEND}/store/categories?slug=${encodeURIComponent(raw)}`,
+      `${BACKEND()}/store/categories?slug=${encodeURIComponent(raw)}`,
       { next: { revalidate } },
     );
     if (!res.ok) return null;
@@ -634,7 +634,7 @@ export async function fetchStorePage(slug, { revalidate = 0 } = {}) {
   const raw = String(slug || "").trim();
   if (!raw) return null;
   try {
-    const res = await fetch(`${BACKEND}/store/pages/${encodeURIComponent(raw)}`, {
+    const res = await fetch(`${BACKEND()}/store/pages/${encodeURIComponent(raw)}`, {
       ...(revalidate ? { next: { revalidate } } : { cache: "no-store" }),
     });
     if (!res.ok) return null;

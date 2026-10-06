@@ -188,7 +188,7 @@ function TreeNode({ node, depth, onDelete, selectedIds, onToggleSelect, locale }
 
 const getDefaultBaseUrl = () => {
   const env = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "";
-  return (typeof env === "string" ? env : "").trim() || (typeof window !== "undefined" ? "http://localhost:9000" : "");
+  return (typeof env === "string" ? env : "").trim() || (typeof window !== "undefined" ? "/api/cms" : "");
 };
 
 const emptyForm = {

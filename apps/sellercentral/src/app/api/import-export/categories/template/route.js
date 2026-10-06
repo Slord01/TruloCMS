@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import ExcelJS from "exceljs";
 import { categoryExcelFilename } from "@/lib/download-names";
 import { resolveRequestLocale } from "@/lib/import-export-i18n";
@@ -6,7 +7,7 @@ import { flattenCategoryIndex, paintCategoryWorkbook } from "@/lib/category-exce
 const DEFAULT_BACKEND = "http://localhost:9000";
 
 function getBackendBase() {
-  return (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, "");
+  return getCmsBackendUrl().replace(/\/$/, "");
 }
 
 async function loadCategories(backendUrl, sellerToken) {

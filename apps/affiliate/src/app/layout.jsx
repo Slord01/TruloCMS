@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 export const metadata = {
   title: 'Trulo Affiliate Portal',
   description: 'Generate affiliate links, track clicks, and manage payouts for the Trulo marketplace',

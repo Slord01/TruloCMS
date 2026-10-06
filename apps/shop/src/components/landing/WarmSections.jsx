@@ -468,7 +468,7 @@ export function CategoryCircles({ container, locale = "de" }) {
   useEffect(() => {
     if (!useCatalog) return undefined;
     let cancelled = false;
-    cachedJsonFetch(`/api/store-categories${shallowCategoriesQuery(locale)}`, { ttlMs: 60000 })
+    cachedJsonFetch(`/shop/api/store-categories${shallowCategoriesQuery(locale)}`, { ttlMs: 60000 })
       .then((res) => {
         if (cancelled) return;
         const tree = Array.isArray(res?.tree) ? res.tree : [];

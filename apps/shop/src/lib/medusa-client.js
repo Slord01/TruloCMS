@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 /**
  * Medusa Backend API Client
  * 
@@ -6,25 +7,8 @@
  */
 
 export function resolveMedusaBaseUrl() {
-  const envUrl = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "").trim();
-  const forceEnvInDev = String(process.env.NEXT_PUBLIC_MEDUSA_USE_ENV_IN_DEV || "").trim() === "true";
-  if (typeof window !== "undefined") {
-    const host = String(window.location?.hostname || "").trim().toLowerCase();
-    const isLocalHost = host === "localhost" || host === "127.0.0.1";
-    // In local browser development, default to local backend for login/signup consistency.
-    // Set NEXT_PUBLIC_MEDUSA_USE_ENV_IN_DEV=true if you explicitly want to use env URL.
-    if (isLocalHost && !forceEnvInDev) {
-      return "http://localhost:9000";
-    }
-  }
-  if (envUrl) return envUrl.replace(/\/$/, "");
-  if (typeof window !== "undefined") {
-    const host = String(window.location?.hostname || "").trim();
-    if (host && host !== "localhost" && host !== "127.0.0.1") {
-      return `http://${host}:9000`;
-    }
-  }
-  return "http://localhost:9000";
+  if (typeof window !== 'undefined') return '/shop/api/cms';
+  return getCmsBackendUrl();
 }
 
 class MedusaClient {
@@ -147,7 +131,7 @@ class MedusaClient {
    * Cart
    */
   async createCart() {
-    const res = await this.requestShopApi('/api/store-carts', {
+    const res = await this.requestShopApi('/shop/api/store-carts', {
       method: 'POST',
       body: JSON.stringify({}),
     })
@@ -157,7 +141,7 @@ class MedusaClient {
 
   async getCart(cartId) {
     if (!cartId) return { cart: null }
-    const res = await this.requestShopApi(`/api/store-carts/${encodeURIComponent(cartId)}?expand=items.variant.product`)
+    const res = await this.requestShopApi(`/shop/api/store-carts/${encodeURIComponent(cartId)}?expand=items.variant.product`)
     if (res?.__error) return { cart: null }
     return res
   }
@@ -165,7 +149,7 @@ class MedusaClient {
   /** The logged-in customer's most recent cart with items — lets a second device pick up the same cart. */
   async getCustomerActiveCart(token) {
     if (!token) return { cart: null }
-    const res = await this.requestShopApi('/api/store-carts/me/active', {
+    const res = await this.requestShopApi('/shop/api/store-carts/me/active', {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (res?.__error) return { cart: null }
@@ -181,7 +165,7 @@ class MedusaClient {
     // Lets the backend backfill Kunde/E-Mail onto the cart for logged-in shoppers as soon as
     // they add an item, instead of only once they reach the checkout form (see abandoned checkouts).
     if (authToken) headers.Authorization = `Bearer ${authToken}`
-    const res = await this.requestShopApi(`/api/store-carts/${encodeURIComponent(cartId)}/line-items`, {
+    const res = await this.requestShopApi(`/shop/api/store-carts/${encodeURIComponent(cartId)}/line-items`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -191,7 +175,7 @@ class MedusaClient {
   }
 
   async updateLineItem(cartId, lineId, quantity) {
-    const res = await this.requestShopApi(`/api/store-carts/${encodeURIComponent(cartId)}/line-items/${encodeURIComponent(lineId)}`, {
+    const res = await this.requestShopApi(`/shop/api/store-carts/${encodeURIComponent(cartId)}/line-items/${encodeURIComponent(lineId)}`, {
       method: 'PATCH',
       body: JSON.stringify({ quantity }),
     })
@@ -200,7 +184,7 @@ class MedusaClient {
   }
 
   async removeLineItem(cartId, lineId) {
-    const res = await this.requestShopApi(`/api/store-carts/${encodeURIComponent(cartId)}/line-items/${encodeURIComponent(lineId)}`, {
+    const res = await this.requestShopApi(`/shop/api/store-carts/${encodeURIComponent(cartId)}/line-items/${encodeURIComponent(lineId)}`, {
       method: 'DELETE',
     })
     if (res?.__error) return { cart: null }
@@ -208,7 +192,7 @@ class MedusaClient {
   }
 
   async clearCart(cartId) {
-    const res = await this.requestShopApi(`/api/store-carts/${encodeURIComponent(cartId)}/line-items`, {
+    const res = await this.requestShopApi(`/shop/api/store-carts/${encodeURIComponent(cartId)}/line-items`, {
       method: 'DELETE',
     })
     if (res?.__error) return { cart: null }
@@ -219,7 +203,7 @@ class MedusaClient {
   async patchStoreCart(cartId, body, authToken) {
     const headers = {}
     if (authToken) headers.Authorization = `Bearer ${authToken}`
-    const res = await this.requestShopApi(`/api/store-carts/${encodeURIComponent(cartId)}`, {
+    const res = await this.requestShopApi(`/shop/api/store-carts/${encodeURIComponent(cartId)}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify(body || {}),
@@ -229,7 +213,7 @@ class MedusaClient {
   }
 
   async updateCart(cartId, data) {
-    const res = await this.requestShopApi(`/api/store-carts/${encodeURIComponent(cartId)}`, {
+    const res = await this.requestShopApi(`/shop/api/store-carts/${encodeURIComponent(cartId)}`, {
       method: 'POST',
       body: JSON.stringify(data),
     })
@@ -241,7 +225,7 @@ class MedusaClient {
    * Orders
    */
   async createOrder(cartId, email) {
-    const res = await this.requestShopApi(`/api/store-carts/${encodeURIComponent(cartId)}/complete`, {
+    const res = await this.requestShopApi(`/shop/api/store-carts/${encodeURIComponent(cartId)}/complete`, {
       method: 'POST',
       body: JSON.stringify({ email }),
     })
@@ -491,7 +475,7 @@ class MedusaClient {
   async getPageBySlug(slug) {
     if (!slug) return null
     try {
-      const res = await fetch(`/api/store-pages/${encodeURIComponent(slug)}`, { cache: "no-store" })
+      const res = await fetch(`/shop/api/store-pages/${encodeURIComponent(slug)}`, { cache: "no-store" })
       if (!res.ok) return null
       return await res.json()
     } catch {

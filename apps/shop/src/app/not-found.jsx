@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { Montserrat } from "next/font/google";
 
 const montserrat = Montserrat({ subsets: ["latin"], weight: ["400", "700"], display: "swap" });
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl();
 
 function isVideoUrl(url) {
   return /\.(mp4|webm|mov|ogv|ogg)(\?.*)?$/i.test(String(url || ""));

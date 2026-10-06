@@ -28,7 +28,7 @@ import { appendMediaFileToFormData } from "@/lib/media-upload";
 
 const getDefaultBaseUrl = () =>
   (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "").replace(/\/$/, "") ||
-  (typeof window !== "undefined" ? "http://localhost:9000" : "");
+  (typeof window !== "undefined" ? "/api/cms" : "");
 
 const EMPTY_FORM = {
   name: "", handle: "", logo_image: "", banner_image: "", address: "",

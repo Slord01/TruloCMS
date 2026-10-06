@@ -356,8 +356,8 @@ export default function UserDropdown({ isAuthenticated, user, onLogout, onOpen, 
             const client = getMedusaClient();
             const res = await Promise.all([
               client.request("/store/orders/me", { headers: { Authorization: `Bearer ${token}` } }),
-              fetchJsonProducts("/api/store-products?limit=12&offset=0"),
-              fetchJsonProducts("/api/store-products?limit=12&offset=14"),
+              fetchJsonProducts("/shop/api/store-products?limit=12&offset=0"),
+              fetchJsonProducts("/shop/api/store-products?limit=12&offset=14"),
             ]);
             const ordersRes = res[0];
             a = res[1];
@@ -365,8 +365,8 @@ export default function UserDropdown({ isAuthenticated, user, onLogout, onOpen, 
             ord = ordersRes?.__error ? [] : (ordersRes?.orders || []);
           } catch {
             [a, b] = await Promise.all([
-              fetchJsonProducts("/api/store-products?limit=12&offset=0"),
-              fetchJsonProducts("/api/store-products?limit=12&offset=14"),
+              fetchJsonProducts("/shop/api/store-products?limit=12&offset=0"),
+              fetchJsonProducts("/shop/api/store-products?limit=12&offset=14"),
             ]);
           }
           if (cancelled) return;
@@ -378,8 +378,8 @@ export default function UserDropdown({ isAuthenticated, user, onLogout, onOpen, 
           setTrending([]);
         } else {
           const [a, b] = await Promise.all([
-            fetchJsonProducts("/api/store-products?limit=12&offset=0"),
-            fetchJsonProducts("/api/store-products?limit=12&offset=12"),
+            fetchJsonProducts("/shop/api/store-products?limit=12&offset=0"),
+            fetchJsonProducts("/shop/api/store-products?limit=12&offset=12"),
           ]);
           if (cancelled) return;
           setFromOrders([]);

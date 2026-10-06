@@ -1,7 +1,7 @@
-const DEFAULT_BACKEND = "http://localhost:9000";
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 
 export function getMedusaBackendBase() {
-  return (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, "");
+  return getCmsBackendUrl();
 }
 
 export async function postCategoryExcelUpsertBatch({ sellerToken, locale, items }) {

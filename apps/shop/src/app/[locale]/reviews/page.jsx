@@ -138,7 +138,7 @@ export default function ReviewsPage() {
   const [trustpilotEvaluateUrl, setTrustpilotEvaluateUrl] = useState(null);
 
   useEffect(() => {
-    const base = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+    const base = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms").replace(/\/$/, "");
     fetch(`${base}/store/trustpilot-config`)
       .then((r) => r.json())
       .then((d) => setTrustpilotEvaluateUrl(typeof d?.evaluateUrl === "string" && d.evaluateUrl ? d.evaluateUrl : null))

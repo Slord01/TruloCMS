@@ -174,7 +174,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/store-seller-settings?seller_id=default", { cache: "no-store" })
+    fetch("/shop/api/store-seller-settings?seller_id=default", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;
@@ -192,7 +192,7 @@ export default function RegisterPage() {
   }, []);
 
   useEffect(() => {
-    applyDocumentFavicon("/api/brand-favicon");
+    applyDocumentFavicon("/shop/api/brand-favicon");
   }, [branding.favicon]);
 
   useEffect(() => {
@@ -228,7 +228,7 @@ export default function RegisterPage() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setEmailExists(false); return; }
     const seq = ++emailCheckSeq.current;
     const id = setTimeout(() => {
-      const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000";
+      const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms";
       fetch(`${backendUrl}/store/customers/email-exists?email=${encodeURIComponent(email)}`)
         .then((r) => r.json())
         .then((d) => { if (seq === emailCheckSeq.current) setEmailExists(!!d?.exists); })
@@ -308,7 +308,7 @@ export default function RegisterPage() {
       if (!registerResult?.customer) { setError(t("registerFailed")); return; }
       if (formData.legalConsent && formData.email) {
         try {
-          const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000";
+          const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms";
           await fetch(`${backendUrl}/store/newsletter-subscribe`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },

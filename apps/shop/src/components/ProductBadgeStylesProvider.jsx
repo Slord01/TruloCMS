@@ -16,7 +16,7 @@ export function ProductBadgeStylesProvider({ children }) {
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      fetch("/api/store-product-badges", { cache: "no-store" })
+      fetch("/shop/api/store-product-badges", { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : { badges: [] }))
         .then((data) => {
           if (cancelled) return;

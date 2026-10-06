@@ -76,7 +76,7 @@ export function useSellerFreeShippingThresholds(items) {
   useEffect(() => {
     if (!sellerIdsKey) return undefined;
     let cancelled = false;
-    fetch(`/api/store-free-shipping-thresholds?seller_ids=${encodeURIComponent(sellerIdsKey)}`)
+    fetch(`/shop/api/store-free-shipping-thresholds?seller_ids=${encodeURIComponent(sellerIdsKey)}`)
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;

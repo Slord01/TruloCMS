@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 ﻿import ExcelJS from "exceljs";
 import { getImportApiMessages, resolveRequestLocale } from "@/lib/import-export-i18n";
 
@@ -48,7 +49,7 @@ function computeUnitReference(unitTypeRaw) {
 }
 
 function getBackendBase() {
-  return (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, "");
+  return getCmsBackendUrl().replace(/\/$/, "");
 }
 
 function parseCents(val) {

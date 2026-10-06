@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic';
+export const preferredRegion = 'fra1';
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 ﻿import "./globals.css";
 import Script from "next/script";
 import { headers } from "next/headers";
@@ -21,7 +24,7 @@ const DEFAULT_HOME_TITLE = "Trulo - Your Marketplace";
 const DEFAULT_HOME_DESCRIPTION = "Discover amazing products from independent sellers";
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 async function getHomepageMetaFromStyles() {
   try {
@@ -65,12 +68,12 @@ export async function generateMetadata() {
     themeColor: DEFAULT_STATUS_THEME,
     icons: {
       icon: [
-        { url: "/api/brand-favicon", type: "image/png", sizes: "any" },
+        { url: "/shop/api/brand-favicon", type: "image/png", sizes: "any" },
         { url: "/trulo-icon.svg", type: "image/png", sizes: "192x192" },
       ],
-      shortcut: "/api/brand-favicon",
+      shortcut: "/shop/api/brand-favicon",
       apple: [
-        { url: "/api/brand-favicon", sizes: "180x180", type: "image/png" },
+        { url: "/shop/api/brand-favicon", sizes: "180x180", type: "image/png" },
         { url: "/trulo-icon.svg", sizes: "180x180", type: "image/png" },
       ],
     },

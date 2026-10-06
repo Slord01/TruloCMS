@@ -313,7 +313,7 @@ export default function SellerProfilePage() {
 
   useEffect(() => {
     if (!seller_id) return;
-    fetch(`/api/store-seller-profile/${encodeURIComponent(seller_id)}`, { cache: "no-store" })
+    fetch(`/shop/api/store-seller-profile/${encodeURIComponent(seller_id)}`, { cache: "no-store" })
       .then((r) => r.json())
       .then(setData)
       .catch(() => setData(null))

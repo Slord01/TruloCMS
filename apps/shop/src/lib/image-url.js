@@ -13,7 +13,7 @@
  */
 const BACKEND_URL =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_CMS_BACKEND_URL) ||
-  "http://localhost:9000";
+  "/shop/api/cms";
 const BASE = (BACKEND_URL || "").replace(/\/$/, "");
 const UPLOADS_BASE = (
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_UPLOADS_BASE_URL) ||

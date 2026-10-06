@@ -1,7 +1,8 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 import { resolveEnabledShopLocales, SHOP_LOCALES } from "@/lib/shop-market";
 
 const getBackendUrl = () =>
-  (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
+  getCmsBackendUrl().replace(/\/$/, "");
 
 /**
  * Server-side fetch of enabled shop locales (platform settings).

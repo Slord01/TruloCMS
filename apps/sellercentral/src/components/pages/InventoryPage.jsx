@@ -259,8 +259,7 @@ function getDefaultShopUrl() {
   const url = (typeof env === "string" ? env : "").trim();
   if (url) return url.replace(/\/$/, "");
   if (typeof window !== "undefined") {
-    if (window.location.hostname === "localhost") return "http://localhost:3000";
-    return window.location.origin;
+    return `${window.location.origin}/shop`;
   }
   return "";
 }

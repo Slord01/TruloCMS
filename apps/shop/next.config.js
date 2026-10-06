@@ -40,6 +40,8 @@ const allowedDevOrigins = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  basePath: "/shop",
+  env: { NEXT_PUBLIC_CMS_BACKEND_URL: "/shop/api/cms" },
   outputFileTracingRoot: monorepoRoot,
   allowedDevOrigins,
   reactStrictMode: true,
@@ -81,7 +83,6 @@ const nextConfig = {
     },
   },
   async rewrites() {
-    const backendBase = (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "");
     // Keep in sync with SHOP_LOCALES in src/lib/shop-market.js.
     // Public URLs are /{country}/{locale}/…; App Router files live at /{locale}/….
     // Middleware rewrites the document/RSC request; beforeFiles is what the client
@@ -101,7 +102,7 @@ const nextConfig = {
       afterFiles: [
         {
           source: "/uploads/:path*",
-          destination: `${backendBase}/uploads/:path*`,
+          destination: "/api/cms/uploads/:path*",
         },
       ],
     };

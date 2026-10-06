@@ -237,7 +237,7 @@ export default function LandingPopup({ pageId }) {
   const frequencyRef = useRef("session");
 
   useEffect(() => {
-    fetch("/api/store-landing-page")
+    fetch("/shop/api/store-landing-page")
       .then((r) => r.json())
       .then((data) => {
         const popup = data?.settings?.popup;

@@ -41,6 +41,8 @@ npm run build --workspace=@trulo/sellercentral
 
 Eski ödeme, mail, marketplace ve diğer gelişmiş entegrasyon ekranlarının backend geçişi tamamlanmış değildir. Yeni backend desteklemediği eski işlemlerde açıkça `501` döner. Shopware senkronizasyonu, tüm eski ekranların veri sözleşmeleri ve üretim deployment'i sonraki işlerdir. `apps/shop` mevcut template çalışma alanıdır; yeni backend ile tam storefront/checkout entegrasyonu henüz yapılmamıştır.
 
-Üretimde CMS backend URL'sini `NEXT_PUBLIC_CMS_BACKEND_URL`, izinli panel origin'ini `CMS_ALLOWED_ORIGINS`, kalıcı disk konumunu `CMS_DATABASE_PATH` ile ayarlayın. Yeni backend tek sunucu ve kalıcı SQLite disk kullanır; çok instance için paylaşımlı veritabanı geçişi gerekir. `.env.example` dosyalarında eski değerler kaldırılmıştır.
+Üretim mimarisi: uygulamalar Vercel'de, veritabanı Render PostgreSQL'de, public görseller Cloudflare R2'de çalışır. Mevcut Shopware siteleri Profihost'ta kalır. Backend `DATABASE_URL` ile PostgreSQL'e bağlanır; Vercel servis binding'lerinin `CMS_BACKEND_URL` değerini kendiniz ayarlamayın. Tarayıcılar aynı domain üzerindeki API proxy'sini kullanır. Yerel geliştirmede PostgreSQL bağlantısı verilmezse SQLite kullanılır; üretimde SQLite'a otomatik dönüş yapılmaz.
+
+Görseller seçili website kapsamında imzalı bağlantıyla R2'ye yüklenir, backend'de doğrulanıp WebP olarak yayınlanır. Render/R2 hesap bağlantıları, domain ve ortam değişkenleri henüz canlıda kurulmadı. Ayrıntılı adımlar: [cloud deployment](docs/cloud-deployment.md); servis adresleri: [Vercel services](docs/vercel-services.md).
 
 DNS kayıtları: [Cloudflare resmi dokümantasyonu](https://developers.cloudflare.com/dns/manage-dns-records/reference/dns-record-types/). SQLite çalışma zamanı: [Node.js dokümantasyonu](https://nodejs.org/download/release/v22.13.0/docs/api/sqlite.html).

@@ -3,7 +3,10 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.js')
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  basePath: "/affiliate",
+  env: { NEXT_PUBLIC_CMS_BACKEND_URL: "/affiliate/api/cms" },
   reactStrictMode: true,
+  transpilePackages: ['@trulo/lib'],
   compiler: { styledComponents: true },
   turbopack: {
     resolveAlias: {

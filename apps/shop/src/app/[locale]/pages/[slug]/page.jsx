@@ -89,7 +89,7 @@ export default function CmsPageBySlug() {
         setPage(data);
         if (data?.id) {
           try {
-            const next = await fetch(`/api/store-landing-page/${encodeURIComponent(data.id)}`, {
+            const next = await fetch(`/shop/api/store-landing-page/${encodeURIComponent(data.id)}`, {
               cache: "no-store",
             }).then((r) => r.json());
             setLanding(next && !next.__error ? next : null);

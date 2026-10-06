@@ -1427,7 +1427,7 @@ export default function ShopHeader() {
   useEffect(() => {
     let cancelled = false;
     const fetchBranding = () => {
-      fetch("/api/store-seller-settings?seller_id=default", { cache: "no-store" })
+      fetch("/shop/api/store-seller-settings?seller_id=default", { cache: "no-store" })
         .then((r) => r.json())
         .then((d) => {
           if (cancelled) return;
@@ -1466,7 +1466,7 @@ export default function ShopHeader() {
 
   useEffect(() => {
     // Same-origin proxy (shop_favicon_url only). Re-bust when settings change.
-    applyDocumentFavicon("/api/brand-favicon");
+    applyDocumentFavicon("/shop/api/brand-favicon");
   }, [shopBranding.shop_favicon_url]);
 
   useEffect(() => {
@@ -1545,8 +1545,8 @@ export default function ShopHeader() {
       setSecondMenuItems(second ? rootItems(second.items) : []);
     };
     Promise.all([
-      cachedJsonFetch("/api/store-menu-locations", { ttlMs: 15000 }).catch(() => ({ locations: [] })),
-      cachedJsonFetch(`/api/store-menus?locale=${encodeURIComponent(locale)}`, { ttlMs: 15000 }).catch(() => ({ menus: [] })),
+      cachedJsonFetch("/shop/api/store-menu-locations", { ttlMs: 15000 }).catch(() => ({ locations: [] })),
+      cachedJsonFetch(`/shop/api/store-menus?locale=${encodeURIComponent(locale)}`, { ttlMs: 15000 }).catch(() => ({ menus: [] })),
     ]).then(([locData, menuData]) => {
       const hasMenus = Array.isArray(menuData?.menus) && menuData.menus.length > 0;
       if (hasMenus) {
@@ -1563,7 +1563,7 @@ export default function ShopHeader() {
 
   useEffect(() => {
     let cancelled = false;
-    cachedJsonFetch(`/api/store-categories${shallowCategoriesQuery(locale)}`, { ttlMs: 60000 })
+    cachedJsonFetch(`/shop/api/store-categories${shallowCategoriesQuery(locale)}`, { ttlMs: 60000 })
       .catch(() => ({ tree: [] }))
       .then((catRes) => {
         if (cancelled) return;
@@ -1590,7 +1590,7 @@ export default function ShopHeader() {
     const parentId = megaRoot?.id != null ? String(megaRoot.id) : "";
     if (!parentId || megaGroupsLoadedRef.current.has(parentId)) return undefined;
     megaGroupsLoadedRef.current.add(parentId);
-    cachedJsonFetch(`/api/store-categories${childrenCategoriesQuery(locale, parentId, 2)}`, { ttlMs: 60000 })
+    cachedJsonFetch(`/shop/api/store-categories${childrenCategoriesQuery(locale, parentId, 2)}`, { ttlMs: 60000 })
       .catch(() => ({ tree: [] }))
       .then((res) => {
         const kids = Array.isArray(res?.tree) ? res.tree : [];
@@ -1636,7 +1636,7 @@ export default function ShopHeader() {
     if (!parentId || categoryChildrenLoadedRef.current.has(parentId)) return undefined;
     categoryChildrenLoadedRef.current.add(parentId);
     let cancelled = false;
-    cachedJsonFetch(`/api/store-categories${childrenCategoriesQuery(locale, parentId)}`, { ttlMs: 60000 })
+    cachedJsonFetch(`/shop/api/store-categories${childrenCategoriesQuery(locale, parentId)}`, { ttlMs: 60000 })
       .catch(() => ({ tree: [] }))
       .then((res) => {
         if (cancelled) return;

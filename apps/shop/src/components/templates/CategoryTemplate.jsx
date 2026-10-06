@@ -802,7 +802,7 @@ export default function CategoryTemplate() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/store-metafield-definitions")
+    fetch("/shop/api/store-metafield-definitions")
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled) setMetafieldDefinitions(data?.definitions || {});
@@ -819,8 +819,8 @@ export default function CategoryTemplate() {
         setLoading(true);
         setError(null);
         const [catResBySlug, productRes] = await Promise.all([
-          fetch(`/api/store-categories${storeCategoriesQuery(locale, { slug })}`).then((r) => r.json()).catch(() => ({ categories: [] })),
-          fetch(`/api/store-products?category=${encodeURIComponent(slug)}&limit=96`).then((r) => r.json()).catch(() => ({ products: [] })),
+          fetch(`/shop/api/store-categories${storeCategoriesQuery(locale, { slug })}`).then((r) => r.json()).catch(() => ({ categories: [] })),
+          fetch(`/shop/api/store-products?category=${encodeURIComponent(slug)}&limit=96`).then((r) => r.json()).catch(() => ({ products: [] })),
         ]);
         if (cancelled) return;
         const cat = catResBySlug?.category || (Array.isArray(catResBySlug?.categories) ? catResBySlug.categories[0] : null);

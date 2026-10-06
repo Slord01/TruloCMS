@@ -244,7 +244,7 @@ export default function BrandsDirectoryBlock({
       try {
         setLoading(true);
         setError("");
-        const res = await fetch("/api/store-brands", { cache: "no-store" });
+        const res = await fetch("/shop/api/store-brands", { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!cancelled) {

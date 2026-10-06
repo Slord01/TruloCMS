@@ -6,7 +6,7 @@ import { api, saveToken } from '../../../../lib/api'
 import PasswordField from '../../../../components/PasswordField'
 import { ALLOWED_COUNTRIES } from '../../../../lib/countries'
 
-const SHOP_URL = (process.env.NEXT_PUBLIC_SHOP_URL || 'http://localhost:9000').replace(/\/$/, '')
+const SHOP_URL = (process.env.NEXT_PUBLIC_SHOP_URL || "/shop").replace(/\/$/, '')
 
 const LOCALES = [
   { code: 'en', label: 'EN' }, { code: 'de', label: 'DE' }, { code: 'tr', label: 'TR' },
@@ -20,7 +20,7 @@ function LocaleSwitcher() {
 
   function switchLocale(code) {
     const segments = window.location.pathname.split('/')
-    segments[1] = code
+    segments[2] = code
     window.location.href = segments.join('/')
     setOpen(false)
   }

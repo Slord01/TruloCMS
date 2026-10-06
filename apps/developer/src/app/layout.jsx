@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 export const metadata = {
   title: 'Trulo Developer Portal',
   description: 'Build and manage apps for the Trulo platform',

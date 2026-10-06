@@ -30,7 +30,7 @@ export default function AffiliateRefCapture() {
     };
 
     const post = (ref) =>
-      fetch("/api/affiliate-track", {
+      fetch("/shop/api/affiliate-track", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ref, source_type: "storefront" }),

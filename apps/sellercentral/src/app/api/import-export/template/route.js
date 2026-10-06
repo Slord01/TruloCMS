@@ -1,3 +1,4 @@
+import { getCmsBackendUrl } from '@trulo/lib/cms-service';
 ﻿import ExcelJS from "exceljs";
 import { getImportApiMessages, resolveRequestLocale } from "@/lib/import-export-i18n";
 import { lt } from "@/lib/locale-text";
@@ -24,7 +25,7 @@ const DEFAULT_BACKEND = "http://localhost:9000";
 const METAFIELD_PAIRS = 15; // template shows 15; import accepts any metafield_N_key/value columns
 
 function getBackendBase() {
-  return (process.env.NEXT_PUBLIC_CMS_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, "");
+  return getCmsBackendUrl().replace(/\/$/, "");
 }
 
 /** 1-based column index → Excel letters */

@@ -37,7 +37,7 @@ export default function AccountSidebar({ onLogout, onNavigate }) {
 
   useEffect(() => {
     if (!user?.email) return;
-    const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "http://localhost:9000";
+    const backendUrl = process.env.NEXT_PUBLIC_CMS_BACKEND_URL || "/shop/api/cms";
     fetch(`${backendUrl}/store/messages/unread-count?email=${encodeURIComponent(user.email)}`)
       .then((r) => r.json())
       .then((d) => setUnreadCount(d?.count || 0))
